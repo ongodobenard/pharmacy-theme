@@ -5,7 +5,7 @@
  *
  * CHANGES:
  * - Silent AJAX cart reset (WC session + fragment refresh) after successful Place Order
- * - 2 fields per row grid, fully responsive (single col on mobile)
+ * - 2 fields per row grid, fully responsive (single col on mobile) — NO full-width exceptions
  * - No emojis — Dashicons only throughout
  * - Success message shows customer email confirmation was sent
  * - Cart count in header updated to 0 after successful order
@@ -82,15 +82,15 @@ wp_enqueue_style( 'dashicons' );
 .chkp-card-body{padding:clamp(10px,2vw,18px);}
 
 /* ════════════════════════════════════════════════
-   FORM GRID — 2 fields per row, responsive
+   FORM GRID — strict 2 fields per row, no exceptions
 ════════════════════════════════════════════════ */
 .chkp-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:12px 14px;
 }
-/* Span full width when needed */
-.chkp-grid .span2{grid-column:1/-1;}
+/* Remove span2 behaviour — nothing spans full width */
+.chkp-grid .span2{grid-column:unset;}
 
 .chkp-fg{display:flex;flex-direction:column;gap:4px;}
 .chkp-fg label{font-family:'Nunito',sans-serif;font-size:.76rem;font-weight:700;color:#4a6358;line-height:1.3;}
@@ -227,7 +227,6 @@ wp_enqueue_style( 'dashicons' );
   .chkp-card-body{padding:10px 8px;}
   /* SINGLE COLUMN on small screens */
   .chkp-grid{grid-template-columns:1fr!important;gap:8px;}
-  .chkp-grid .span2{grid-column:1;}
   .chkp-step-lbl{display:none!important;}
   .chkp-step-line{min-width:5px;margin:0 4px;}
   .chkp-pay-pills{gap:4px;}
@@ -309,7 +308,7 @@ wp_enqueue_style( 'dashicons' );
 
       <?php do_action( 'woocommerce_checkout_before_customer_details' ); ?>
 
-      <!-- BILLING — 2 fields per row -->
+      <!-- BILLING — strict 2 fields per row, no exceptions -->
       <div class="chkp-card" id="chkp-card-billing">
         <div class="chkp-card-head">
           <span class="dashicons dashicons-admin-users"></span>
@@ -331,13 +330,12 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">Last name is required</span>
             </div>
 
-            <!-- Row 2: Company (full width) -->
-            <div class="chkp-fg span2" data-field="billing_company">
+            <!-- Row 2: Company | Country -->
+            <div class="chkp-fg" data-field="billing_company">
               <label>Company <span class="opt">(optional)</span></label>
               <input type="text" name="billing_company" id="billing_company" value="<?php echo $val( 'billing_company' ); ?>" placeholder="Company name" autocomplete="organization">
             </div>
 
-            <!-- Row 3: Country | Phone -->
             <div class="chkp-fg" data-field="billing_country">
               <label>Country / Region <span class="req">*</span></label>
               <select name="billing_country" id="billing_country">
@@ -348,10 +346,21 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">Country is required</span>
             </div>
 
+            <!-- Row 3: Phone | Email -->
             <div class="chkp-fg" data-field="billing_phone">
               <label>Phone <span class="req">*</span></label>
               <input type="tel" name="billing_phone" id="billing_phone" value="<?php echo $val( 'billing_phone' ); ?>" placeholder="+254 7XX XXX XXX" autocomplete="tel">
               <span class="chkp-field-error">Phone number is required</span>
+            </div>
+
+            <div class="chkp-fg" data-field="billing_email">
+              <label>Email <span class="req">*</span> <span class="opt">(confirmation sent here)</span></label>
+              <input type="email" name="billing_email" id="billing_email" value="<?php echo $val( 'billing_email' ); ?>" placeholder="your@email.com" autocomplete="email">
+              <span class="chkp-field-error">A valid email address is required</span>
+              <div class="chkp-email-note">
+                <span class="dashicons dashicons-email-alt" style="font-size:12px;width:12px;height:12px;color:#2eaf6e;"></span>
+                Order confirmation will be sent here.
+              </div>
             </div>
 
             <!-- Row 4: Street address | Apartment -->
@@ -388,25 +397,14 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">State / County is required</span>
             </div>
 
-            <!-- Row 6: Postcode (half) -->
+            <!-- Row 6: Postcode | (empty spacer kept as invisible placeholder to maintain grid) -->
             <div class="chkp-fg" data-field="billing_postcode">
               <label>Postcode / ZIP <span class="opt">(optional)</span></label>
               <input type="text" name="billing_postcode" id="billing_postcode" value="<?php echo $val( 'billing_postcode' ); ?>" placeholder="Postcode" autocomplete="postal-code">
             </div>
 
-            <!-- Spacer for postcode row — keeps grid aligned -->
+            <!-- Row 6 col 2: empty spacer (keeps grid tidy) -->
             <div class="chkp-fg" style="visibility:hidden;" aria-hidden="true"></div>
-
-            <!-- Row 7: Email (full width) -->
-            <div class="chkp-fg span2" data-field="billing_email">
-              <label>Email address <span class="req">*</span> <span class="opt">(order confirmation will be sent here)</span></label>
-              <input type="email" name="billing_email" id="billing_email" value="<?php echo $val( 'billing_email' ); ?>" placeholder="your@email.com" autocomplete="email">
-              <span class="chkp-field-error">A valid email address is required to receive your order confirmation</span>
-              <div class="chkp-email-note">
-                <span class="dashicons dashicons-email-alt" style="font-size:12px;width:12px;height:12px;color:#2eaf6e;"></span>
-                Your order confirmation email will be sent to this address.
-              </div>
-            </div>
 
           </div><!-- /.chkp-grid -->
         </div>
@@ -603,10 +601,10 @@ wp_enqueue_style( 'dashicons' );
     {id:'billing_last_name',  label:'Last name'},
     {id:'billing_country',    label:'Country'},
     {id:'billing_phone',      label:'Phone'},
+    {id:'billing_email',      label:'Email address', type:'email'},
     {id:'billing_address_1',  label:'Street address'},
     {id:'billing_city',       label:'Town / City'},
     {id:'billing_state',      label:'State / County'},
-    {id:'billing_email',      label:'Email address', type:'email'},
   ];
 
   function getVal(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
@@ -696,15 +694,8 @@ wp_enqueue_style( 'dashicons' );
 
   /* ════════════════════════════════════════════════════════
      SILENT CART RESET via WooCommerce cart fragments AJAX
-     Called right after server responds with success.
-     1. Resets all form fields
-     2. Triggers WC cart fragment refresh (updates header badge silently)
-     3. Zeroes sidebar order summary UI
-     4. Fades form cards
   ════════════════════════════════════════════════════════ */
   function silentCartReset(){
-
-    // 1. Reset all visible form fields
     var form = document.getElementById('chkp-form');
     if(form){
       form.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])').forEach(function(inp){ inp.value=''; });
@@ -714,8 +705,6 @@ wp_enqueue_style( 'dashicons' );
       form.querySelectorAll('.error').forEach(function(el){ el.classList.remove('error'); });
     }
 
-    // 2. Trigger WooCommerce cart fragment refresh — silently updates header cart count
-    //    WC fires 'wc_fragment_refresh' on document which updates all [data-cart-fragment] elements
     var wcFragmentUrl = WC_AJAX_URL.replace('%%endpoint%%', 'get_refreshed_fragments');
     fetch(wcFragmentUrl, {
       method:'POST', credentials:'same-origin',
@@ -725,7 +714,6 @@ wp_enqueue_style( 'dashicons' );
     .then(function(r){ return r.json(); })
     .then(function(data){
       if(data && data.fragments){
-        // Apply fragments to the DOM (WC's standard approach)
         Object.keys(data.fragments).forEach(function(selector){
           try{
             var els = document.querySelectorAll(selector);
@@ -740,7 +728,6 @@ wp_enqueue_style( 'dashicons' );
     })
     .catch(function(){})
     .finally(function(){
-      // Fallback: manually zero all cart count elements
       var cartSelectors = [
         '.cart-contents-count','.wc-cart-count','.cart-count',
         '.site-header-cart .count','a.cart-contents span.count',
@@ -753,19 +740,15 @@ wp_enqueue_style( 'dashicons' );
       });
     });
 
-    // 3. Clear the order summary table rows
     var tbody = document.querySelector('.woocommerce-checkout-review-order-table tbody');
     if(tbody) tbody.innerHTML = '<tr><td colspan="2" style="padding:12px 14px;font-size:.8rem;color:#8aaa98;font-family:Nunito,sans-serif;text-align:center;">Cart cleared</td></tr>';
 
-    // 4. Zero order total in sidebar
     var totCell = document.querySelector('.woocommerce-checkout-review-order-table tfoot .order-total .amount');
     if(totCell) totCell.textContent = 'KES 0.00';
 
-    // 5. Update sidebar header count text
     var sidebarHead = document.getElementById('chkp-summary-title');
     if(sidebarHead) sidebarHead.textContent = 'Order Summary (0 items)';
 
-    // 6. Fade form cards (except actions card which shows success)
     ['chkp-card-billing','chkp-card-payment','chkp-card-notes'].forEach(function(id){
       var card = document.getElementById(id);
       if(card){
@@ -792,13 +775,11 @@ wp_enqueue_style( 'dashicons' );
     if(actions) actions.style.display='none';
     if(continueBtn) continueBtn.style.display='flex';
 
-    // Show email confirmation note
     if(emailNote && customerEmail){
       if(emailText) emailText.textContent = 'A confirmation email has been sent to ' + customerEmail;
       emailNote.style.display = 'flex';
     }
 
-    // Advance steps indicator to Confirmation
     var step3 = document.getElementById('chkp-step-3');
     var line2  = document.getElementById('chkp-step-line-2');
     var step2  = document.getElementById('chkp-step-2');
@@ -812,8 +793,6 @@ wp_enqueue_style( 'dashicons' );
     }
 
     if(succEl) succEl.scrollIntoView({behavior:'smooth',block:'center'});
-
-    // Silent cart + form reset — no page reload
     silentCartReset();
   }
 
@@ -849,7 +828,6 @@ wp_enqueue_style( 'dashicons' );
           isDesktop
         );
       } else if(res && res.data && res.data.order_id){
-        // Order saved but email may have had issue — still show success
         showSuccess(res.data.order_id, customerEmail, isDesktop);
       } else {
         var errMsg = (res && res.data && res.data.msg)
