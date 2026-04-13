@@ -104,7 +104,7 @@ remove_action('woocommerce_sidebar', 'woocommerce_get_sidebar', 10);
 add_action('woocommerce_before_main_content', function() { echo '<div class="wc-outer">'; }, 10);
 add_action('woocommerce_after_main_content',  function() { echo '</div>'; }, 10);
 
-// ─── WHATSAPP ORDER BUTTON (Single Product) ───
+// ─── WHATSAPP ORDER BUTTON (Single Product Page) ──────────────────────────
 function medicare_wa_button() {
     if ( !class_exists('WooCommerce') ) return;
     global $product;
@@ -125,40 +125,6 @@ function medicare_wa_button() {
         </svg>
         Buy Via WhatsApp
     </button>
-
-    <script>
-    (function($){
-        $(document).on('click', '.carevee-wa-order-btn', function(e){
-            e.preventDefault();
-            var $btn      = $(this);
-            var productId = $btn.data('product-id');
-            var waUrl     = $btn.data('wa-url');
-            var nonce     = $btn.data('nonce');
-            var qty       = parseInt($('input.qty').val()) || 1;
-
-            $btn.prop('disabled', true).text('Processing…');
-
-            $.ajax({
-                url  : (typeof medicareData !== 'undefined' ? medicareData.ajaxUrl : '/wp-admin/admin-ajax.php'),
-                type : 'POST',
-                data : {
-                    action             : 'carevee_wa_order',
-                    carevee_order_nonce: nonce,
-                    product_id         : productId,
-                    qty                : qty,
-                    phone              : '',
-                    customer_name      : 'WhatsApp Customer',
-                },
-                complete: function(){
-                    $btn.prop('disabled', false).html(
-                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Buy Via WhatsApp'
-                    );
-                    window.open(waUrl, '_blank');
-                }
-            });
-        });
-    })(jQuery);
-    </script>
     <?php
 }
 add_action('woocommerce_single_product_summary', 'medicare_wa_button', 35);
@@ -192,21 +158,17 @@ add_action('pre_get_posts', function($query) {
     $query->set('post_type', 'product');
 });
 
-// ─── CAREVEE WHATSAPP ORDER: CART CLEAR ───────
+// ─── CART CLEAR ON REDIRECT ───────────────────
 add_action('template_redirect', function() {
     if ( ! isset($_GET['carevee_order_sent']) || $_GET['carevee_order_sent'] !== '1' ) return;
     if ( ! function_exists('WC') || ! WC()->cart ) return;
 
     WC()->cart->empty_cart();
-
     if ( WC()->session ) {
         WC()->session->set('cart', []);
         WC()->session->set('cart_totals', null);
     }
-
-    if ( function_exists('wc_clear_notices') ) {
-        wc_clear_notices();
-    }
+    if ( function_exists('wc_clear_notices') ) wc_clear_notices();
 
     $shop_url = function_exists('wc_get_page_id')
         ? get_permalink(wc_get_page_id('shop'))
@@ -325,8 +287,8 @@ add_action('wp_ajax_medicare_filter_products',        'medicare_filter_products'
 add_action('wp_ajax_nopriv_medicare_filter_products', 'medicare_filter_products');
 
 // ─── GLOBAL JS FOR WA ORDER BUTTON ────────────
+// Handles .carevee-wa-order-btn on ALL pages: home, shop, product, categories
 add_action('wp_footer', function() {
-    if ( ! is_product() && ! is_shop() && ! is_product_category() && ! is_search() ) return;
     ?>
     <script>
     (function($){
@@ -448,17 +410,15 @@ function carevee_submit_prescription() {
     if ( empty($phone) )    wp_send_json_error(['msg' => 'Phone number is required.']);
     if ( empty($location) ) wp_send_json_error(['msg' => 'Delivery address is required.']);
 
-    // Handle file upload
     $attachment = [];
     if ( !empty($_FILES['rx_file']['name']) ) {
         $allowed_types = [
-            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+            'image/jpeg','image/jpg','image/png','image/gif','image/webp',
             'application/pdf',
             'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
-        $file_type = $_FILES['rx_file']['type'];
-        if ( !in_array($file_type, $allowed_types) ) {
+        if ( !in_array($_FILES['rx_file']['type'], $allowed_types) ) {
             wp_send_json_error(['msg' => 'Invalid file type. Please upload an image, PDF or Word document.']);
         }
         if ( $_FILES['rx_file']['size'] > 10 * 1024 * 1024 ) {
@@ -479,16 +439,16 @@ function carevee_submit_prescription() {
     $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     $body   .= "PATIENT DETAILS\n";
     $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-    $body   .= "Name:            " . $fname . ' ' . $lname . "\n";
-    $body   .= "Age:             " . $age . "\n";
-    $body   .= "Gender:          " . $gender . "\n";
-    $body   .= "Phone:           " . $phone . "\n";
-    $body   .= "Email:           " . ($email ?: 'Not provided') . "\n";
-    $body   .= "Delivery Address:" . $location . "\n";
-    $body   .= "Allergies:       " . ($allergies ?: 'None mentioned') . "\n";
-    $body   .= "Notes:           " . ($notes ?: 'None') . "\n";
+    $body   .= "Name:             " . $fname . ' ' . $lname . "\n";
+    $body   .= "Age:              " . $age . "\n";
+    $body   .= "Gender:           " . $gender . "\n";
+    $body   .= "Phone:            " . $phone . "\n";
+    $body   .= "Email:            " . ($email ?: 'Not provided') . "\n";
+    $body   .= "Delivery Address: " . $location . "\n";
+    $body   .= "Allergies:        " . ($allergies ?: 'None mentioned') . "\n";
+    $body   .= "Notes:            " . ($notes ?: 'None') . "\n";
     $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-    $body   .= "Prescription file is attached to this email.\n";
+    $body   .= "Prescription file is attached.\n";
     $body   .= "Please review and contact the patient via phone or WhatsApp.\n\n";
     $body   .= "Submitted: " . current_time('mysql') . "\n";
 
@@ -499,7 +459,6 @@ function carevee_submit_prescription() {
 
     $sent = wp_mail($to, $subject, $body, $headers, $attachment);
 
-    // Clean up uploaded file after sending
     if ( !empty($attachment[0]) && file_exists($attachment[0]) ) {
         @unlink($attachment[0]);
     }
@@ -514,6 +473,357 @@ function carevee_submit_prescription() {
 }
 add_action('wp_ajax_carevee_submit_prescription',        'carevee_submit_prescription');
 add_action('wp_ajax_nopriv_carevee_submit_prescription', 'carevee_submit_prescription');
+
+// ════════════════════════════════════════════════════════════════════════════
+// ─── SHARED ORDER HELPER ─────────────────────────────────────────────────
+// Builds and sends the HTML notification email + creates the WC order.
+// Used by BOTH carevee_wa_order_handler AND carevee_send_order_email_handler.
+// ════════════════════════════════════════════════════════════════════════════
+function carevee_build_and_send_order( $args ) {
+
+    $fname      = $args['fname']      ?? '';
+    $lname      = $args['lname']      ?? '';
+    $company    = $args['company']    ?? '';
+    $phone      = $args['phone']      ?? '';
+    $email      = $args['email']      ?? '';
+    $addr1      = $args['addr1']      ?? '';
+    $addr2      = $args['addr2']      ?? '';
+    $city       = $args['city']       ?? '';
+    $state      = $args['state']      ?? '';
+    $postcode   = $args['postcode']   ?? '';
+    $country    = $args['country']    ?: 'KE';
+    $notes      = $args['notes']      ?? '';
+    $payment    = $args['payment']    ?: 'cod';
+    $via        = $args['via']        ?: 'website';
+    $cart_lines = $args['cart_lines'] ?? [];   // [['name','qty','price','sub'], ...]
+    $wc_items   = $args['wc_items']   ?? [];   // [['product'=>WC_Product,'qty'=>int], ...]
+
+    $total = array_sum(array_column($cart_lines, 'sub'));
+
+    // ── CREATE WC ORDER ──
+    $order_id    = 0;
+    $order_url   = '';
+    $order_error = '';
+
+    if ( function_exists('wc_create_order') && ! empty($wc_items) ) {
+        try {
+            $order = wc_create_order([
+                'status'      => 'pending',
+                'customer_id' => get_current_user_id(),
+            ]);
+
+            if ( is_wp_error($order) ) throw new Exception( $order->get_error_message() );
+
+            $order->set_billing_first_name( $fname );
+            $order->set_billing_last_name(  $lname );
+            $order->set_billing_company(    $company );
+            $order->set_billing_phone(      $phone );
+            $order->set_billing_email(      is_email($email) ? $email : get_option('admin_email') );
+            $order->set_billing_address_1(  $addr1 );
+            $order->set_billing_address_2(  $addr2 );
+            $order->set_billing_city(       $city );
+            $order->set_billing_state(      $state );
+            $order->set_billing_postcode(   $postcode );
+            $order->set_billing_country(    $country );
+            $order->set_payment_method(     $payment );
+            $order->set_payment_method_title( ucwords(str_replace(['_','-'],' ', $payment)) );
+
+            foreach ( $wc_items as $item ) {
+                $order->add_product( $item['product'], $item['qty'] );
+            }
+
+            if ( $notes ) $order->add_order_note( 'Customer note: ' . $notes, 1 );
+            $order->add_order_note(
+                'Order placed via CareVee ' . ( $via === 'whatsapp' ? 'WhatsApp button' : 'website checkout' ) . '.',
+                0
+            );
+
+            $order->calculate_totals();
+            $order->save();
+
+            $order_id  = $order->get_id();
+            $order_url = admin_url('admin.php?page=wc-orders&action=edit&id=' . $order_id);
+
+        } catch ( Exception $e ) {
+            $order_error = $e->getMessage();
+        }
+    }
+
+    // ── BUILD EMAIL ──
+    $store_name   = get_bloginfo('name');
+    $notify_email = function_exists('medicare_email') ? medicare_email() : 'sales@careveekenya.co.ke';
+    $order_label  = $order_id ? '#' . $order_id : 'N/A';
+    $via_label    = $via === 'whatsapp' ? '📱 WhatsApp Order' : '🌐 Website Checkout';
+    $total_fmt    = 'KES ' . number_format($total, 2);
+
+    $items_html = '';
+    foreach ( $cart_lines as $item ) {
+        $items_html .= '<tr>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;font-family:Arial,sans-serif;font-size:14px;color:#1a2e25;">' . esc_html($item['name']) . '</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:center;font-family:Arial,sans-serif;font-size:14px;color:#4a6358;">' . intval($item['qty']) . '</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:right;font-family:Arial,sans-serif;font-size:14px;color:#2eaf6e;font-weight:700;">KES ' . number_format($item['sub'], 2) . '</td>
+        </tr>';
+    }
+
+    $wc_block = $order_id
+        ? '<tr><td style="padding:12px 32px 0;"><div style="background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:8px;padding:10px 16px;font-size:12px;color:#1e8a54;">✅ Order #' . $order_id . ' saved to WooCommerce — Status: <strong>Pending Payment</strong></div></td></tr>'
+        : ( $order_error ? '<tr><td style="padding:12px 32px 0;"><div style="background:#fff0f0;border:1.5px solid #f0b8b8;border-radius:8px;padding:10px 16px;font-size:12px;color:#c0392b;">⚠️ WC order creation failed: ' . esc_html($order_error) . '</div></td></tr>' : '' );
+
+    $view_btn = $order_id
+        ? '<a href="' . esc_url($order_url) . '" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 28px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;">View Order #' . $order_id . ' in WooCommerce →</a>'
+        : '<a href="' . esc_url(admin_url('admin.php?page=wc-orders')) . '" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 28px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;">View WooCommerce Orders →</a>';
+
+    $customer_rows = '
+        <tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;width:130px;">Name</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;font-weight:700;">' . esc_html(trim($fname . ' ' . $lname)) . '</td></tr>'
+        . ($company ? '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Company</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html($company) . '</td></tr>' : '')
+        . ($phone   ? '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Phone</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;font-weight:700;"><a href="tel:' . esc_attr($phone) . '" style="color:#2eaf6e;">' . esc_html($phone) . '</a></td></tr>' : '')
+        . (is_email($email) ? '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Email</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;"><a href="mailto:' . esc_attr($email) . '" style="color:#2eaf6e;">' . esc_html($email) . '</a></td></tr>' : '')
+        . '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Address</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html(implode(', ', array_filter([$addr1,$addr2,$city,$state,$postcode,$country]))) . '</td></tr>'
+        . '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Payment</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html(ucwords(str_replace(['_','-'],' ',$payment))) . '</td></tr>';
+
+    $wa_phone = preg_replace('/[^0-9]/', '', $phone);
+
+    $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf5;padding:30px 0;">
+      <tr><td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;max-width:600px;width:100%;">
+          <tr><td style="background:linear-gradient(135deg,#1e8a54,#2eaf6e);padding:28px 32px;text-align:center;">
+            <div style="font-size:26px;font-weight:900;color:#fff;">' . esc_html($store_name) . '</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:4px;">New Order Notification</div>
+          </td></tr>
+          <tr><td style="padding:24px 32px 0;text-align:center;">
+            <div style="display:inline-block;background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:50px;padding:7px 20px;font-size:13px;font-weight:800;color:#1e8a54;">' . $via_label . ' &nbsp;|&nbsp; Order ' . esc_html($order_label) . '</div>
+          </td></tr>
+          ' . $wc_block . '
+          <tr><td style="padding:24px 32px 0;">
+            <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:12px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">👤 Customer Details</div>
+            <table width="100%" cellpadding="0" cellspacing="0">' . $customer_rows . '</table>
+          </td></tr>
+          <tr><td style="padding:24px 32px 0;">
+            <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:12px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">🛒 Order Items</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e8f8f0;border-radius:8px;overflow:hidden;">
+              <thead><tr style="background:#f8fffe;">
+                <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Product</th>
+                <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Qty</th>
+                <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Total</th>
+              </tr></thead>
+              <tbody>' . $items_html . '</tbody>
+              <tfoot><tr style="background:#f0faf5;">
+                <td colspan="2" style="padding:12px 14px;font-size:15px;font-weight:900;color:#1a2e25;">ORDER TOTAL</td>
+                <td style="padding:12px 14px;text-align:right;font-size:17px;font-weight:900;color:#2eaf6e;">' . $total_fmt . '</td>
+              </tr></tfoot>
+            </table>
+          </td></tr>
+          ' . ($notes ? '<tr><td style="padding:20px 32px 0;"><div style="background:#fff8e8;border:1.5px solid #f0d080;border-radius:8px;padding:12px 16px;"><div style="font-size:12px;font-weight:800;color:#b8860b;margin-bottom:5px;text-transform:uppercase;">📝 Customer Notes</div><div style="font-size:13px;color:#4a6358;line-height:1.6;">' . esc_html($notes) . '</div></div></td></tr>' : '') . '
+          <tr><td style="padding:20px 32px 0;">
+            <div style="background:#f0faf5;border:1.5px solid #b8ecd4;border-radius:8px;padding:14px 16px;">
+              <div style="font-size:12px;font-weight:800;color:#2eaf6e;text-transform:uppercase;margin-bottom:8px;">💳 Payment Reminder</div>
+              <div style="font-size:12px;color:#4a6358;line-height:1.8;">
+                • <strong>Nairobi:</strong> Collect Cash or M-Pesa on delivery<br>
+                • <strong>Other Counties:</strong> Full payment before dispatch<br>
+                • <strong>M-Pesa Till:</strong> 5279237 (CAREVEE STORE)
+              </div>
+            </div>
+          </td></tr>
+          <tr><td style="padding:24px 32px;text-align:center;">
+            ' . $view_btn . '
+            ' . ($wa_phone ? '<div style="margin-top:14px;"><a href="https://wa.me/' . esc_attr($wa_phone) . '" style="font-size:12px;color:#25d366;text-decoration:none;font-weight:700;">💬 WhatsApp Customer</a></div>' : '') . '
+          </td></tr>
+          <tr><td style="background:#f8fffe;border-top:2px solid #e8f8f0;padding:16px 32px;text-align:center;">
+            <div style="font-size:11px;color:#8aaa98;">Automated notification from ' . esc_html($store_name) . '</div>
+            <div style="font-size:11px;color:#8aaa98;margin-top:3px;">📞 +254 790 007 616 &nbsp;|&nbsp; ' . esc_html(home_url('/')) . '</div>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+    </body></html>';
+
+    $subject = '🛒 New Order ' . $order_label . ' — ' . trim($fname . ' ' . $lname) . ' | ' . $store_name;
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    if ( is_email($email) ) {
+        $headers[] = 'Reply-To: ' . trim($fname . ' ' . $lname) . ' <' . $email . '>';
+    }
+
+    $sent = wp_mail($notify_email, $subject, $html, $headers);
+
+    return [
+        'order_id'    => $order_id,
+        'order_error' => $order_error,
+        'email_sent'  => $sent,
+    ];
+}
+
+// ─── AJAX: WHATSAPP QUICK ORDER ───────────────
+// Fired by Buy Via WhatsApp button on home / shop / product pages.
+// Logs a WC pending order with the product clicked, then opens WhatsApp.
+add_action('wp_ajax_carevee_wa_order',        'carevee_wa_order_handler');
+add_action('wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler');
+
+function carevee_wa_order_handler() {
+
+    if ( ! isset($_POST['carevee_order_nonce']) ||
+         ! wp_verify_nonce( sanitize_text_field($_POST['carevee_order_nonce']), 'carevee_order_nonce' ) ) {
+        wp_send_json_error(['msg' => 'Security check failed.']);
+        return;
+    }
+
+    $product_id = intval($_POST['product_id']    ?? 0);
+    $qty        = max(1, intval($_POST['qty']     ?? 1));
+    $name       = sanitize_text_field($_POST['customer_name'] ?? 'WhatsApp Customer');
+    $phone      = sanitize_text_field($_POST['phone']         ?? '');
+
+    if ( ! $product_id || ! function_exists('wc_get_product') ) {
+        wp_send_json_error(['msg' => 'Invalid product.']);
+        return;
+    }
+
+    $product = wc_get_product($product_id);
+    if ( ! $product ) {
+        wp_send_json_error(['msg' => 'Product not found.']);
+        return;
+    }
+
+    $parts = explode(' ', trim($name), 2);
+    $fname = $parts[0];
+    $lname = $parts[1] ?? '';
+
+    $price = (float) $product->get_price();
+    $sub   = $price * $qty;
+
+    $result = carevee_build_and_send_order([
+        'fname'      => $fname,
+        'lname'      => $lname,
+        'phone'      => $phone,
+        'country'    => 'KE',
+        'payment'    => 'cod',
+        'via'        => 'whatsapp',
+        'cart_lines' => [['name' => $product->get_name(), 'qty' => $qty, 'price' => $price, 'sub' => $sub]],
+        'wc_items'   => [['product' => $product, 'qty' => $qty]],
+    ]);
+
+    // Always return success — WA window must open regardless
+    wp_send_json_success([
+        'msg'      => 'Order logged.',
+        'order_id' => $result['order_id'],
+    ]);
+}
+
+// ─── AJAX: CHECKOUT PLACE ORDER ───────────────
+// Fired by the Place Order button and WA button on the checkout page.
+// Reads the full cart, creates a WC pending order, sends notification email.
+add_action('wp_ajax_carevee_send_order_email',        'carevee_send_order_email_handler');
+add_action('wp_ajax_nopriv_carevee_send_order_email', 'carevee_send_order_email_handler');
+
+function carevee_send_order_email_handler() {
+
+    if ( ! isset($_POST['carevee_order_nonce']) ||
+         ! wp_verify_nonce( sanitize_text_field($_POST['carevee_order_nonce']), 'carevee_order_nonce' ) ) {
+        wp_send_json_error(['msg' => 'Security check failed.']);
+        return;
+    }
+
+    $fname    = sanitize_text_field($_POST['billing_first_name'] ?? '');
+    $lname    = sanitize_text_field($_POST['billing_last_name']  ?? '');
+    $company  = sanitize_text_field($_POST['billing_company']    ?? '');
+    $phone    = sanitize_text_field($_POST['billing_phone']      ?? '');
+    $email    = sanitize_email($_POST['billing_email']           ?? '');
+    $addr1    = sanitize_text_field($_POST['billing_address_1']  ?? '');
+    $addr2    = sanitize_text_field($_POST['billing_address_2']  ?? '');
+    $city     = sanitize_text_field($_POST['billing_city']       ?? '');
+    $state    = sanitize_text_field($_POST['billing_state']      ?? '');
+    $postcode = sanitize_text_field($_POST['billing_postcode']   ?? '');
+    $country  = sanitize_text_field($_POST['billing_country']    ?? 'KE');
+    $notes    = sanitize_textarea_field($_POST['order_comments'] ?? '');
+    $payment  = sanitize_text_field($_POST['payment_method']     ?? 'cod');
+    $via      = sanitize_text_field($_POST['order_via']          ?? 'website');
+
+    if ( empty($fname) || empty($lname) ) {
+        wp_send_json_error(['msg' => 'Please enter your first and last name.']);
+        return;
+    }
+    if ( empty($phone) ) {
+        wp_send_json_error(['msg' => 'Please enter your phone number.']);
+        return;
+    }
+
+    // ── Read cart ──
+    $cart_lines = [];
+    $wc_items   = [];
+
+    if ( function_exists('WC') && WC()->cart && ! WC()->cart->is_empty() ) {
+        foreach ( WC()->cart->get_cart() as $ci ) {
+            $p     = $ci['data'];
+            $q     = $ci['quantity'];
+            $price = (float) $p->get_price();
+            $sub   = $price * $q;
+            $cart_lines[] = ['name' => $p->get_name(), 'qty' => $q, 'price' => $price, 'sub' => $sub];
+            $wc_items[]   = ['product' => $p, 'qty' => $q];
+        }
+    }
+
+    if ( empty($cart_lines) ) {
+        wp_send_json_error(['msg' => 'Your cart is empty. Please add items before placing an order.']);
+        return;
+    }
+
+    $result = carevee_build_and_send_order([
+        'fname'      => $fname,
+        'lname'      => $lname,
+        'company'    => $company,
+        'phone'      => $phone,
+        'email'      => $email,
+        'addr1'      => $addr1,
+        'addr2'      => $addr2,
+        'city'       => $city,
+        'state'      => $state,
+        'postcode'   => $postcode,
+        'country'    => $country,
+        'notes'      => $notes,
+        'payment'    => $payment,
+        'via'        => $via,
+        'cart_lines' => $cart_lines,
+        'wc_items'   => $wc_items,
+    ]);
+
+    $order_id = $result['order_id'];
+    $sent     = $result['email_sent'];
+    $err      = $result['order_error'];
+
+    // Empty cart after order is saved
+    if ( $order_id && function_exists('WC') && WC()->cart ) {
+        WC()->cart->empty_cart();
+        if ( WC()->session ) {
+            WC()->session->set('cart', []);
+            WC()->session->set('cart_totals', null);
+        }
+    }
+
+    if ( $sent && $order_id ) {
+        wp_send_json_success([
+            'msg'        => '✅ Order #' . $order_id . ' placed! We will contact you shortly to confirm.',
+            'order_id'   => $order_id,
+            'email_sent' => true,
+        ]);
+    } elseif ( $order_id && ! $sent ) {
+        wp_send_json_error([
+            'msg'        => 'Order #' . $order_id . ' saved but confirmation email failed. Please check SMTP settings.',
+            'order_id'   => $order_id,
+            'email_sent' => false,
+        ]);
+    } elseif ( $sent && ! $order_id ) {
+        wp_send_json_error([
+            'msg'        => 'Email sent but WooCommerce order could not be saved. Error: ' . esc_html($err),
+            'order_id'   => 0,
+            'email_sent' => true,
+        ]);
+    } else {
+        wp_send_json_error([
+            'msg'        => '❌ Something went wrong. Please contact us on WhatsApp or call +254 790 007 616.',
+            'order_id'   => 0,
+            'email_sent' => false,
+        ]);
+    }
+}
 
 // ─── ADMIN SETTINGS PAGE ──────────────────────
 function medicare_admin_menu() {
@@ -597,7 +907,6 @@ add_action('wp_head', 'medicare_schema');
 add_filter('excerpt_length', function() { return 18; }, 999);
 add_filter('excerpt_more',   function() { return '...'; });
 
-// Remove WooCommerce default breadcrumb
 add_action('init', function() {
     remove_action('woocommerce_before_main_content', 'woocommerce_breadcrumb', 20);
 });
