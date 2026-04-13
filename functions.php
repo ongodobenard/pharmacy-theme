@@ -495,8 +495,8 @@ function carevee_build_and_send_order( $args ) {
     $notes      = $args['notes']      ?? '';
     $payment    = $args['payment']    ?: 'cod';
     $via        = $args['via']        ?: 'website';
-    $cart_lines = $args['cart_lines'] ?? [];   // [['name','qty','price','sub'], ...]
-    $wc_items   = $args['wc_items']   ?? [];   // [['product'=>WC_Product,'qty'=>int], ...]
+    $cart_lines = $args['cart_lines'] ?? [];
+    $wc_items   = $args['wc_items']   ?? [];
 
     $total = array_sum(array_column($cart_lines, 'sub'));
 
@@ -654,8 +654,6 @@ function carevee_build_and_send_order( $args ) {
 }
 
 // ─── AJAX: WHATSAPP QUICK ORDER ───────────────
-// Fired by Buy Via WhatsApp button on home / shop / product pages.
-// Logs a WC pending order with the product clicked, then opens WhatsApp.
 add_action('wp_ajax_carevee_wa_order',        'carevee_wa_order_handler');
 add_action('wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler');
 
@@ -701,7 +699,6 @@ function carevee_wa_order_handler() {
         'wc_items'   => [['product' => $product, 'qty' => $qty]],
     ]);
 
-    // Always return success — WA window must open regardless
     wp_send_json_success([
         'msg'      => 'Order logged.',
         'order_id' => $result['order_id'],
@@ -709,8 +706,6 @@ function carevee_wa_order_handler() {
 }
 
 // ─── AJAX: CHECKOUT PLACE ORDER ───────────────
-// Fired by the Place Order button and WA button on the checkout page.
-// Reads the full cart, creates a WC pending order, sends notification email.
 add_action('wp_ajax_carevee_send_order_email',        'carevee_send_order_email_handler');
 add_action('wp_ajax_nopriv_carevee_send_order_email', 'carevee_send_order_email_handler');
 
@@ -746,7 +741,6 @@ function carevee_send_order_email_handler() {
         return;
     }
 
-    // ── Read cart ──
     $cart_lines = [];
     $wc_items   = [];
 
@@ -789,7 +783,6 @@ function carevee_send_order_email_handler() {
     $sent     = $result['email_sent'];
     $err      = $result['order_error'];
 
-    // Empty cart after order is saved
     if ( $order_id && function_exists('WC') && WC()->cart ) {
         WC()->cart->empty_cart();
         if ( WC()->session ) {

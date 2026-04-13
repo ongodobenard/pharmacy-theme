@@ -1,8 +1,7 @@
 <?php
 /**
  * Checkout Page Template — Slug: checkout
- * UPDATED: Place Order sends email to sales@careveekenya.co.ke + shows feedback.
- * WA button creates pending WC order immediately.
+ * NOTE: All AJAX handlers live in functions.php. This file is the template only.
  */
 
 /* ════════════════════════════════════════════════════════════
@@ -31,344 +30,6 @@ add_filter('woocommerce_add_notice',  '__return_empty_string');
 add_action('wp_loaded', function(){
   if ( function_exists('wc_clear_notices') ) wc_clear_notices();
 }, 1);
-
-/* ════════════════════════════════════════════════════════════
-   AJAX: SEND ORDER EMAIL + CREATE WC ORDER (PENDING)
-   Called by JS after Place Order or WhatsApp button
-════════════════════════════════════════════════════════════ */
-add_action('wp_ajax_carevee_send_order_email',        'carevee_send_order_email_handler');
-add_action('wp_ajax_nopriv_carevee_send_order_email', 'carevee_send_order_email_handler');
-
-function carevee_send_order_email_handler() {
-  /* ── Verify nonce ── */
-  if ( ! isset($_POST['carevee_order_nonce']) ||
-       ! wp_verify_nonce( sanitize_text_field($_POST['carevee_order_nonce']), 'carevee_order_nonce' ) ) {
-    wp_send_json_error(['msg' => 'Security check failed.']);
-    return;
-  }
-
-  /* ── Sanitise customer data ── */
-  $fname    = sanitize_text_field($_POST['billing_first_name'] ?? '');
-  $lname    = sanitize_text_field($_POST['billing_last_name']  ?? '');
-  $company  = sanitize_text_field($_POST['billing_company']    ?? '');
-  $phone    = sanitize_text_field($_POST['billing_phone']      ?? '');
-  $email    = sanitize_email($_POST['billing_email']           ?? '');
-  $addr1    = sanitize_text_field($_POST['billing_address_1']  ?? '');
-  $addr2    = sanitize_text_field($_POST['billing_address_2']  ?? '');
-  $city     = sanitize_text_field($_POST['billing_city']       ?? '');
-  $state    = sanitize_text_field($_POST['billing_state']      ?? '');
-  $postcode = sanitize_text_field($_POST['billing_postcode']   ?? '');
-  $country  = sanitize_text_field($_POST['billing_country']    ?? '');
-  $notes    = sanitize_textarea_field($_POST['order_comments'] ?? '');
-  $payment  = sanitize_text_field($_POST['payment_method']     ?? 'cod');
-  $via      = sanitize_text_field($_POST['order_via']          ?? 'website');
-
-  /* ── Validate required fields ── */
-  if ( empty($fname) || empty($lname) ) {
-    wp_send_json_error(['msg' => 'Please enter your first and last name.']);
-    return;
-  }
-  if ( empty($phone) ) {
-    wp_send_json_error(['msg' => 'Please enter your phone number.']);
-    return;
-  }
-
-  /* ── Get cart items ── */
-  $cart_lines = [];
-  $total      = 0;
-  if ( function_exists('WC') && WC()->cart ) {
-    foreach ( WC()->cart->get_cart() as $ci ) {
-      $p     = $ci['data'];
-      $q     = $ci['quantity'];
-      $price = (float) $p->get_price();
-      $sub   = $price * $q;
-      $total += $sub;
-      $cart_lines[] = [
-        'name'  => $p->get_name(),
-        'qty'   => $q,
-        'price' => $price,
-        'sub'   => $sub,
-      ];
-    }
-  }
-
-  if ( empty($cart_lines) ) {
-    wp_send_json_error(['msg' => 'Your cart is empty. Please add items before placing an order.']);
-    return;
-  }
-
-  /* ── CREATE WC ORDER (status: pending) ── */
-  $order_id    = 0;
-  $order_url   = '';
-  $order_error = '';
-
-  if ( function_exists('wc_create_order') ) {
-    try {
-      $order = wc_create_order([
-        'status'      => 'pending',
-        'customer_id' => get_current_user_id(),
-      ]);
-
-      if ( is_wp_error($order) ) {
-        throw new Exception( $order->get_error_message() );
-      }
-
-      /* Billing address */
-      $order->set_billing_first_name( $fname );
-      $order->set_billing_last_name(  $lname );
-      $order->set_billing_company(    $company );
-      $order->set_billing_phone(      $phone );
-      $order->set_billing_email(      is_email($email) ? $email : get_option('admin_email') );
-      $order->set_billing_address_1(  $addr1 );
-      $order->set_billing_address_2(  $addr2 );
-      $order->set_billing_city(       $city );
-      $order->set_billing_state(      $state );
-      $order->set_billing_postcode(   $postcode );
-      $order->set_billing_country(    $country ? $country : 'KE' );
-
-      /* Add products */
-      foreach ( WC()->cart->get_cart() as $ci ) {
-        $order->add_product( $ci['data'], $ci['quantity'] );
-      }
-
-      /* Payment & notes */
-      $order->set_payment_method( $payment );
-      $order->set_payment_method_title( ucwords(str_replace(['_','-'],' ',$payment)) );
-
-      if ( $notes ) {
-        $order->add_order_note( 'Customer note: ' . $notes, 1 ); // 1 = customer-facing
-      }
-
-      $order->add_order_note(
-        'Order placed via CareVee ' . ( $via === 'whatsapp' ? 'WhatsApp button' : 'website checkout (Place Order button)' ) . '.',
-        0 // 0 = private
-      );
-
-      /* Calculate and save */
-      $order->calculate_totals();
-      $order->save();
-      $order_id  = $order->get_id();
-      $order_url = admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id );
-
-      /* Empty the cart */
-      WC()->cart->empty_cart();
-      if ( WC()->session ) {
-        WC()->session->set('cart', []);
-        WC()->session->set('cart_totals', null);
-      }
-
-    } catch ( Exception $e ) {
-      $order_error = $e->getMessage();
-      $order_id    = 0;
-    }
-  }
-
-  /* ── BUILD EMAIL HTML ── */
-  $store_name = get_bloginfo('name');
-
-  // ★ Send to sales@careveekenya.co.ke — matches SMTP From in functions.php
-  $notify_email = function_exists('medicare_email') ? medicare_email() : 'sales@careveekenya.co.ke';
-
-  $order_label = $order_id ? '#' . $order_id : 'N/A';
-  $via_label   = $via === 'whatsapp' ? '📱 WhatsApp Order' : '🌐 Website Checkout';
-  $total_fmt   = 'KES ' . number_format($total, 2);
-
-  $items_html = '';
-  foreach ( $cart_lines as $item ) {
-    $items_html .= '
-      <tr>
-        <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;font-family:\'Nunito\',Arial,sans-serif;font-size:14px;color:#1a2e25;">'
-          . esc_html($item['name']) . '</td>
-        <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:center;font-family:\'Nunito\',Arial,sans-serif;font-size:14px;color:#4a6358;">'
-          . intval($item['qty']) . '</td>
-        <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:right;font-family:\'Nunito\',Arial,sans-serif;font-size:14px;color:#2eaf6e;font-weight:700;">KES '
-          . number_format($item['sub'], 2) . '</td>
-      </tr>';
-  }
-
-  /* WC status block in email */
-  $wc_status_block = $order_id
-    ? '<tr><td style="padding:12px 32px 0;"><div style="background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:8px;padding:10px 16px;font-size:12px;color:#1e8a54;">✅ Order #' . $order_id . ' saved to WooCommerce — Status: <strong>Pending Payment</strong></div></td></tr>'
-    : ( $order_error ? '<tr><td style="padding:12px 32px 0;"><div style="background:#fff0f0;border:1.5px solid #f0b8b8;border-radius:8px;padding:10px 16px;font-size:12px;color:#c0392b;">⚠️ WC order creation failed: ' . esc_html($order_error) . '</div></td></tr>' : '' );
-
-  $view_order_btn = $order_id
-    ? '<a href="' . esc_url($order_url) . '" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 28px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;">View Order #' . $order_id . ' in WooCommerce →</a>'
-    : '<a href="' . esc_url(admin_url('admin.php?page=wc-orders')) . '" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 28px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;">View in WooCommerce Orders →</a>';
-
-  $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;font-family:\'Nunito\',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf5;padding:30px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(46,175,110,.1);max-width:600px;width:100%;">
-
-        <!-- HEADER -->
-        <tr><td style="background:linear-gradient(135deg,#1e8a54,#2eaf6e);padding:28px 32px;text-align:center;">
-          <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px;">' . esc_html($store_name) . '</div>
-          <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:4px;">New Order Notification</div>
-        </td></tr>
-
-        <!-- ALERT BADGE -->
-        <tr><td style="padding:24px 32px 0;text-align:center;">
-          <div style="display:inline-block;background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:50px;padding:7px 20px;font-size:13px;font-weight:800;color:#1e8a54;">'
-            . $via_label . ' &nbsp;|&nbsp; Order ' . esc_html($order_label) . '</div>
-        </td></tr>
-
-        ' . $wc_status_block . '
-
-        <!-- CUSTOMER DETAILS -->
-        <tr><td style="padding:24px 32px 0;">
-          <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:12px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">👤 Customer Details</div>
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;width:130px;">Name</td>
-              <td style="padding:5px 0;font-size:13px;color:#1a2e25;font-weight:700;">' . esc_html($fname . ' ' . $lname) . '</td>
-            </tr>' .
-            ($company ? '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Company</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html($company) . '</td></tr>' : '') . '
-            <tr>
-              <td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Phone</td>
-              <td style="padding:5px 0;font-size:13px;color:#1a2e25;font-weight:700;"><a href="tel:' . esc_attr($phone) . '" style="color:#2eaf6e;">' . esc_html($phone) . '</a></td>
-            </tr>' .
-            (is_email($email) ? '<tr><td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Email</td><td style="padding:5px 0;font-size:13px;color:#1a2e25;"><a href="mailto:' . esc_attr($email) . '" style="color:#2eaf6e;">' . esc_html($email) . '</a></td></tr>' : '') . '
-            <tr>
-              <td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Address</td>
-              <td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html( implode(', ', array_filter([$addr1, $addr2, $city, $state, $postcode, $country])) ) . '</td>
-            </tr>
-            <tr>
-              <td style="padding:5px 0;font-size:13px;color:#8aaa98;font-weight:700;">Payment</td>
-              <td style="padding:5px 0;font-size:13px;color:#1a2e25;">' . esc_html(ucwords(str_replace(['_','-'],' ',$payment))) . '</td>
-            </tr>
-          </table>
-        </td></tr>
-
-        <!-- ORDER ITEMS -->
-        <tr><td style="padding:24px 32px 0;">
-          <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:12px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">🛒 Order Items</div>
-          <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e8f8f0;border-radius:8px;overflow:hidden;">
-            <thead>
-              <tr style="background:#f8fffe;">
-                <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;letter-spacing:.06em;">Product</th>
-                <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;letter-spacing:.06em;">Qty</th>
-                <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;letter-spacing:.06em;">Total</th>
-              </tr>
-            </thead>
-            <tbody>' . $items_html . '</tbody>
-            <tfoot>
-              <tr style="background:#f0faf5;">
-                <td colspan="2" style="padding:12px 14px;font-size:15px;font-weight:900;color:#1a2e25;">ORDER TOTAL</td>
-                <td style="padding:12px 14px;text-align:right;font-size:17px;font-weight:900;color:#2eaf6e;">' . $total_fmt . '</td>
-              </tr>
-            </tfoot>
-          </table>
-        </td></tr>
-
-        ' . ($notes ? '
-        <!-- NOTES -->
-        <tr><td style="padding:20px 32px 0;">
-          <div style="background:#fff8e8;border:1.5px solid #f0d080;border-radius:8px;padding:12px 16px;">
-            <div style="font-size:12px;font-weight:800;color:#b8860b;text-transform:uppercase;margin-bottom:5px;">📝 Customer Notes</div>
-            <div style="font-size:13px;color:#4a6358;line-height:1.6;">' . esc_html($notes) . '</div>
-          </div>
-        </td></tr>' : '') . '
-
-        <!-- PAYMENT INFO -->
-        <tr><td style="padding:20px 32px 0;">
-          <div style="background:#f0faf5;border:1.5px solid #b8ecd4;border-radius:8px;padding:14px 16px;">
-            <div style="font-size:12px;font-weight:800;color:#2eaf6e;text-transform:uppercase;margin-bottom:8px;">💳 Payment Reminder</div>
-            <div style="font-size:12px;color:#4a6358;line-height:1.8;">
-              • <strong>Nairobi:</strong> Collect Cash or M-Pesa on delivery<br>
-              • <strong>Other Counties:</strong> Full payment before dispatch<br>
-              • <strong>M-Pesa Till:</strong> 5279237 (CAREVEE STORE)
-            </div>
-          </div>
-        </td></tr>
-
-        <!-- CTA -->
-        <tr><td style="padding:24px 32px;text-align:center;">
-          ' . $view_order_btn . '
-          <div style="margin-top:14px;">
-            <a href="https://wa.me/' . esc_attr(preg_replace('/[^0-9]/','',$phone)) . '" style="font-size:12px;color:#25d366;text-decoration:none;font-weight:700;">💬 WhatsApp Customer</a>
-          </div>
-        </td></tr>
-
-        <!-- FOOTER -->
-        <tr><td style="background:#f8fffe;border-top:2px solid #e8f8f0;padding:16px 32px;text-align:center;">
-          <div style="font-size:11px;color:#8aaa98;">This is an automated notification from ' . esc_html($store_name) . '</div>
-          <div style="font-size:11px;color:#8aaa98;margin-top:3px;">📞 +254 790 007 616 &nbsp;|&nbsp; ' . esc_html(home_url('/')) . '</div>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body></html>';
-
-  /* ── SEND EMAIL ── */
-  $subject = '🛒 New Order ' . $order_label . ' — ' . $fname . ' ' . $lname . ' | ' . $store_name;
-
-  // From is set by phpmailer_init in functions.php (sales@careveekenya.co.ke)
-  $headers = [
-    'Content-Type: text/html; charset=UTF-8',
-  ];
-
-  // Reply-To customer if they gave an email
-  if ( is_email($email) ) {
-    $headers[] = 'Reply-To: ' . $fname . ' ' . $lname . ' <' . $email . '>';
-  }
-
-  // ★ Send to sales@careveekenya.co.ke
-  $sent = wp_mail( $notify_email, $subject, $html, $headers );
-
-  /* ── RESPOND ── */
-  if ( $sent && $order_id ) {
-    wp_send_json_success([
-      'msg'       => '✅ Your order #' . $order_id . ' has been placed! We will contact you shortly to confirm.',
-      'order_id'  => $order_id,
-      'email_sent'=> true,
-    ]);
-  } elseif ( $order_id && ! $sent ) {
-    // Order in WC but email failed — still report as partial error so JS can show message
-    wp_send_json_error([
-      'msg'       => 'Order saved (#' . $order_id . ') but confirmation email could not be sent. Please check SMTP settings.',
-      'order_id'  => $order_id,
-      'email_sent'=> false,
-    ]);
-  } elseif ( $sent && ! $order_id ) {
-    wp_send_json_error([
-      'msg'       => 'Email sent but order could not be saved to WooCommerce. Error: ' . esc_html($order_error),
-      'order_id'  => 0,
-      'email_sent'=> true,
-    ]);
-  } else {
-    wp_send_json_error([
-      'msg'       => '❌ Something went wrong. Please contact us directly on WhatsApp or call +254 790 007 616.',
-      'order_id'  => 0,
-      'email_sent'=> false,
-    ]);
-  }
-}
-
-/* ── Cart clear via server-side redirect ── */
-add_action('template_redirect', function(){
-  if ( isset($_GET['carevee_order_sent']) && $_GET['carevee_order_sent'] === '1' ) {
-    if ( function_exists('WC') && WC()->cart ) {
-      WC()->cart->empty_cart();
-      if ( WC()->session ) {
-        WC()->session->set('cart', []);
-        WC()->session->set('cart_totals', null);
-      }
-    }
-    if ( function_exists('wc_clear_notices') ) wc_clear_notices();
-    $shop = function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop');
-    wp_redirect(esc_url_raw($shop));
-    exit;
-  }
-});
-
-add_action('template_redirect', function(){
-  if ( isset($_GET['clear_cart']) && $_GET['clear_cart'] == '1' ) {
-    if ( function_exists('WC') && WC()->cart ) {
-      WC()->cart->empty_cart();
-    }
-  }
-});
 
 get_header();
 wp_enqueue_style('dashicons');
@@ -478,7 +139,7 @@ wp_enqueue_style('dashicons');
 .chkp-mobile-actions{display:none;}
 .chkp-desktop-actions{display:flex;flex-direction:column;gap:10px;}
 
-/* ── ORDER SUCCESS BANNER (inline, shown inside card) ── */
+/* ── ORDER SUCCESS BANNER ── */
 .chkp-success-banner{
   display:none;background:#edfaf3;border:1.5px solid #6fcf97;border-left:4px solid #2eaf6e;
   border-radius:10px;padding:16px;font-family:'Nunito',sans-serif;margin-bottom:12px;
@@ -515,9 +176,7 @@ wp_enqueue_style('dashicons');
 @media(max-width:360px){.chkp-wrap{padding:8px 2%;}.chkp-card-body{padding:8px 6px;}.chkp-fg input,.chkp-fg select{padding:6px 8px;font-size:.76rem;}.chkp-wa-btn{font-size:.78rem;padding:10px 8px;gap:6px;}.chkp-place-btn{font-size:.76rem;padding:10px 8px;}}
 </style>
 
-<?php
-if ( function_exists('wc_clear_notices') ) wc_clear_notices();
-?>
+<?php if ( function_exists('wc_clear_notices') ) wc_clear_notices(); ?>
 
 <!-- BANNER -->
 <section class="chkp-banner">
@@ -711,7 +370,7 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
             <span id="chkp-val-detail"></span>
           </div>
 
-          <!-- Success feedback (shown after Place Order) -->
+          <!-- Success feedback -->
           <div class="chkp-success-banner" id="chkp-success-desktop">
             <div class="chkp-success-banner-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2eaf6e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -729,13 +388,11 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
           <div class="chkp-error-banner" id="chkp-error-desktop"></div>
 
           <div class="chkp-desktop-actions" id="chkp-desktop-actions">
-            <!-- WhatsApp button -->
             <a href="#" id="chkp-wa-btn" class="chkp-wa-btn">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Make Order via WhatsApp
             </a>
             <div class="chkp-or">OR place order on website</div>
-            <!-- Place Order button -->
             <button type="button" class="chkp-place-btn" id="chkp-place-btn-desktop">
               <span class="cv-spin"></span>
               <span class="dashicons dashicons-yes-alt" style="font-size:15px;width:15px;height:15px;"></span>
@@ -747,7 +404,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
             </a>
           </div>
 
-          <!-- Continue shopping link shown after success -->
           <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
              class="chkp-place-btn" id="chkp-continue-desktop"
              style="display:none;text-decoration:none;margin-top:10px;background:#1e8a54;">
@@ -783,7 +439,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
       <span id="chkp-val-detail-mobile"></span>
     </div>
 
-    <!-- Mobile success banner -->
     <div class="chkp-success-banner" id="chkp-success-mobile">
       <div class="chkp-success-banner-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2eaf6e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -797,24 +452,20 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
       </div>
     </div>
 
-    <!-- Mobile error banner -->
     <div class="chkp-error-banner" id="chkp-error-mobile"></div>
 
-    <!-- WhatsApp button -->
     <a href="#" id="chkp-wa-btn-mobile" class="chkp-wa-btn">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       Make Order via WhatsApp
     </a>
     <div class="chkp-or">OR place order on website</div>
 
-    <!-- Mobile Place Order -->
     <button type="button" id="chkp-place-btn-mobile" class="chkp-place-btn">
       <span class="cv-spin"></span>
       <span class="dashicons dashicons-yes-alt" style="font-size:15px;width:15px;height:15px;"></span>
       <span class="chkp-btn-label">Place Order &amp; Send Confirmation</span>
     </button>
 
-    <!-- Mobile continue shopping (post-success) -->
     <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
        class="chkp-place-btn" id="chkp-continue-mobile"
        style="display:none;text-decoration:none;background:#1e8a54;">
@@ -835,13 +486,12 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
 <script>
 (function(){
 
-  /* ══ CONFIG ══ */
   var AJAX_URL    = '<?php echo esc_js(admin_url("admin-ajax.php")); ?>';
   var ORDER_NONCE = '<?php echo esc_js($order_nonce); ?>';
   var SHOP_URL    = '<?php echo esc_js(function_exists("wc_get_page_id") ? get_permalink(wc_get_page_id("shop")) : home_url("/shop")); ?>';
   var SENT_URL    = '<?php echo esc_js(home_url("/?carevee_order_sent=1")); ?>';
 
-  /* ══ NUKE NOTICES ══ */
+  /* ── NUKE NOTICES ── */
   function nukeNotices() {
     var sels = ['.woocommerce-notices-wrapper','.woocommerce-message','.woocommerce-info','ul.woocommerce-error','.woocommerce-NoticeGroup','.woocommerce-NoticeGroup-checkout','.woocommerce-NoticeGroup-updateOrderReview'];
     sels.forEach(function(s){ document.querySelectorAll(s).forEach(function(el){ el.style.cssText='display:none!important;visibility:hidden!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;'; if(el.parentNode)el.parentNode.removeChild(el); }); });
@@ -852,7 +502,7 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     new MutationObserver(function(muts){ muts.forEach(function(m){ m.addedNodes.forEach(function(n){ if(n.nodeType===1){var c=n.className||'';if(['woocommerce-message','woocommerce-info','woocommerce-error','woocommerce-NoticeGroup','woocommerce-notices-wrapper'].some(function(k){return c.indexOf(k)>-1;}))nukeNotices();} }); }); }).observe(document.body,{childList:true,subtree:true});
   }
 
-  /* ══ REQUIRED FIELDS ══ */
+  /* ── REQUIRED FIELDS ── */
   var required = [
     {id:'billing_first_name', label:'First name'},
     {id:'billing_last_name',  label:'Last name'},
@@ -893,7 +543,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     return !hasError;
   }
 
-  /* ══ COLLECT FORM DATA ══ */
   function collectFormData(via){
     var form = document.getElementById('chkp-form');
     var fd   = new FormData(form);
@@ -905,7 +554,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     return fd;
   }
 
-  /* ══ BUILD WHATSAPP MESSAGE ══ */
   function buildWaMessage(){
     var fname=getVal('billing_first_name'), lname=getVal('billing_last_name'),
         company=getVal('billing_company'), phone=getVal('billing_phone'),
@@ -934,7 +582,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     return msg;
   }
 
-  /* ══ SEND TO SERVER ══ */
   function sendOrderToServer(via, onDone){
     var fd = collectFormData(via);
     fetch(AJAX_URL, {
@@ -946,7 +593,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     .catch(function(){ if(onDone) onDone(null); });
   }
 
-  /* ══ SHOW SUCCESS INLINE ══ */
   function showSuccess(orderId, isDesktop){
     var suffix      = isDesktop ? '-desktop' : '-mobile';
     var succEl      = document.getElementById('chkp-success'+suffix);
@@ -959,7 +605,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     if(succEl) succEl.classList.add('show');
     if(actions) actions.style.display='none';
     if(continueBtn) continueBtn.style.display='flex';
-    /* Advance step indicator to Confirmation */
     var steps=document.querySelectorAll('.chkp-step');
     if(steps[2]) steps[2].classList.add('active');
     var lines=document.querySelectorAll('.chkp-step-line');
@@ -967,7 +612,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     if(succEl) succEl.scrollIntoView({behavior:'smooth',block:'center'});
   }
 
-  /* ══ SHOW ERROR INLINE ══ */
   function showError(msg, isDesktop){
     var suffix = isDesktop ? '-desktop' : '-mobile';
     var errEl  = document.getElementById('chkp-error'+suffix);
@@ -977,7 +621,6 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     errEl.scrollIntoView({behavior:'smooth',block:'center'});
   }
 
-  /* ══ PLACE ORDER HANDLER ══ */
   function handlePlaceOrder(isDesktop){
     var valMsg    = isDesktop ? 'chkp-val-msg'    : 'chkp-val-msg-mobile';
     var valDetail = isDesktop ? 'chkp-val-detail' : 'chkp-val-detail-mobile';
@@ -993,14 +636,11 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
       if(btn){ btn.disabled=false; btn.classList.remove('loading'); }
 
       if(res && res.success){
-        /* Full success: order saved + email sent */
         showSuccess(res.data && res.data.order_id ? res.data.order_id : null, isDesktop);
       } else if(res && res.data && res.data.order_id){
-        /* Order saved in WC but email failed — still show success + soft warning */
         showSuccess(res.data.order_id, isDesktop);
         showError('Order #'+res.data.order_id+' saved but confirmation email failed. Please check SMTP settings.', isDesktop);
       } else {
-        /* Full failure */
         var msg = (res && res.data && res.data.msg)
           ? res.data.msg
           : 'Something went wrong. Please try again or contact us via WhatsApp.';
@@ -1009,24 +649,18 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
     });
   }
 
-  /* ══ WHATSAPP HANDLER ══ */
   function handleWaOrder(isDesktop){
     var valMsg    = isDesktop ? 'chkp-val-msg'    : 'chkp-val-msg-mobile';
     var valDetail = isDesktop ? 'chkp-val-detail' : 'chkp-val-detail-mobile';
     if(!validateForm(valMsg, valDetail)) return;
     document.getElementById(valMsg).classList.remove('show');
 
-    /* 1. Open WhatsApp immediately */
     window.open('https://wa.me/254790007616?text='+encodeURIComponent(buildWaMessage()), '_blank');
-
-    /* 2. Create WC pending order + send email notification in background */
     sendOrderToServer('whatsapp', function(){});
-
-    /* 3. Server clears cart and redirects */
     setTimeout(function(){ window.location.href = SENT_URL; }, 800);
   }
 
-  /* ══ WIRE UP BUTTONS ══ */
+  /* ── WIRE UP BUTTONS ── */
   var btnD = document.getElementById('chkp-place-btn-desktop');
   if(btnD) btnD.addEventListener('click', function(){ handlePlaceOrder(true); });
 
@@ -1039,11 +673,10 @@ if ( function_exists('wc_clear_notices') ) wc_clear_notices();
   var waM = document.getElementById('chkp-wa-btn-mobile');
   if(waM) waM.addEventListener('click', function(e){ e.preventDefault(); handleWaOrder(false); });
 
-  /* Block native WC form submit */
   var form = document.getElementById('chkp-form');
   if(form) form.addEventListener('submit', function(e){ e.preventDefault(); });
 
-  /* ══ LIVE FIELD VALIDATION ══ */
+  /* ── LIVE FIELD VALIDATION ── */
   required.forEach(function(f){
     var inp=document.getElementById(f.id);
     var wrap=document.querySelector('[data-field="'+f.id+'"]');
