@@ -5,10 +5,12 @@
  *
  * CHANGES:
  * - No emojis anywhere — Dashicons only
- * - WC admin badge: shown only when Orders page is NOT open; hidden when admin
- *   navigates to Orders (page load OR menu link click via JS)
- * - WhatsApp buttons on home/shop/product pages save order to WooCommerce immediately on click
- * - Customer name for WA quick-orders set to "WhatsApp Client"
+ * - WC admin badge: counts ONLY orders created AFTER the admin last viewed Orders.
+ *   The "last viewed" timestamp is stored in user meta so it persists across sessions.
+ *   Badge resets to 0 and hides when Orders page is opened; new orders after that
+ *   point start counting from 1 again.
+ * - WhatsApp buttons on home/shop/product pages: after AJAX order saved, cart is
+ *   cleared server-side AND client is redirected to the shop page with a clean reload.
  * - Cart + form reset silently via WC fragments after successful Place Order (server-side cart clear)
  */
 
@@ -293,8 +295,18 @@ function medicare_filter_products() {
 add_action( 'wp_ajax_medicare_filter_products',        'medicare_filter_products' );
 add_action( 'wp_ajax_nopriv_medicare_filter_products', 'medicare_filter_products' );
 
-// ─── GLOBAL JS FOR WA ORDER BUTTON ────────────
+// ════════════════════════════════════════════════════════════════════════════
+// ─── GLOBAL JS FOR WA ORDER BUTTON ──────────────────────────────────────
+//
+// After the AJAX order is saved:
+//   1. Opens WhatsApp in a new tab
+//   2. Clears the WooCommerce cart client-side (WC fragment refresh)
+//   3. Reloads the current page redirected to the shop URL (clean state)
+// ════════════════════════════════════════════════════════════════════════════
 add_action( 'wp_footer', function () {
+    $shop_url = function_exists( 'wc_get_page_id' )
+        ? get_permalink( wc_get_page_id( 'shop' ) )
+        : home_url( '/shop' );
     ?>
     <script>
     (function($){
@@ -312,7 +324,8 @@ add_action( 'wp_footer', function () {
             var $qtyInput = $('input.qty');
             if ($qtyInput.length) qty = parseInt($qtyInput.val()) || 1;
 
-            $btn.prop('disabled', true);
+            // Disable button to prevent double-clicks
+            $btn.prop('disabled', true).css('opacity', '0.6');
 
             $.ajax({
                 url  : (typeof medicareData !== 'undefined' ? medicareData.ajaxUrl : '/wp-admin/admin-ajax.php'),
@@ -326,8 +339,12 @@ add_action( 'wp_footer', function () {
                     customer_name      : 'WhatsApp Client',
                 },
                 complete: function(){
-                    $btn.prop('disabled', false);
+                    // 1. Open WhatsApp in new tab
                     window.open(waUrl, '_blank');
+
+                    // 2. Redirect current window to shop page (this also clears the cart
+                    //    visually since the server already emptied it in the AJAX handler)
+                    window.location.href = <?php echo wp_json_encode( esc_url_raw( $shop_url ) ); ?>;
                 }
             });
         });
@@ -782,6 +799,8 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
 }
 
 // ─── AJAX: WHATSAPP QUICK ORDER ───────────────
+// After saving the order server-side, the cart is also cleared server-side.
+// The JS (in wp_footer above) then redirects the browser to the shop page.
 add_action( 'wp_ajax_carevee_wa_order',        'carevee_wa_order_handler' );
 add_action( 'wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler' );
 
@@ -822,6 +841,15 @@ function carevee_wa_order_handler() {
         'cart_lines' => [ [ 'name' => $product->get_name(), 'qty' => $qty, 'price' => $price, 'sub' => $sub ] ],
         'wc_items'   => [ [ 'product' => $product, 'qty' => $qty ] ],
     ] );
+
+    // ── Clear WC cart server-side so the redirect to shop arrives with empty cart ──
+    if ( function_exists( 'WC' ) && WC()->cart ) {
+        WC()->cart->empty_cart();
+        if ( WC()->session ) {
+            WC()->session->set( 'cart', [] );
+            WC()->session->set( 'cart_totals', null );
+        }
+    }
 
     wp_send_json_success( [
         'msg'      => 'Order logged.',
@@ -948,50 +976,72 @@ function carevee_send_order_email_handler() {
 // ════════════════════════════════════════════════════════════════════════════
 // ─── WOOCOMMERCE ADMIN ORDER BADGE ───────────────────────────────────────
 //
-// Shows a red bubble with pending/processing order count on the Orders
-// sub-menu item ONLY (never duplicated on the parent WooCommerce item).
-//
-// Badge is hidden automatically when:
-//   1. The Orders page is already the currently loaded admin page (PHP-side check)
-//   2. The admin clicks the Orders menu link (JS intercept before navigation)
-//
-// The JS stores a session flag in sessionStorage so the badge stays gone until
-// new orders arrive and the admin navigates away from Orders.
+// LOGIC:
+//   - Each admin user has a "last viewed orders at" timestamp stored in user meta
+//     (carevee_orders_last_viewed). Default = 0 (never viewed).
+//   - The badge counts ONLY pending+processing orders whose creation date is
+//     AFTER that timestamp — i.e. genuinely new, unseen orders.
+//   - When the admin opens the Orders page:
+//       • PHP records the current time in user meta immediately (so any orders
+//         created from this moment onwards will start a fresh count from 1).
+//       • JS hides the badge on the current page load.
+//   - No sessionStorage is used — the user meta persists across browser sessions
+//     correctly, so closing and reopening the browser never re-shows old badges.
 // ════════════════════════════════════════════════════════════════════════════
 add_action( 'admin_menu', 'carevee_wc_order_badge', 999 );
 
 function carevee_wc_order_badge() {
     global $submenu;
 
-    // ── PHP side: suppress badge when Orders page is open ──
-    $current_page = $_GET['page']      ?? '';
-    $current_post = $_GET['post_type'] ?? '';
+    $current_page   = $_GET['page']      ?? '';
+    $current_post   = $_GET['post_type'] ?? '';
     $is_orders_page = ( $current_page === 'wc-orders' || $current_post === 'shop_order' );
 
-    if ( $is_orders_page ) return; // No badge needed — user is already viewing orders
+    $admin_user_id = get_current_user_id();
 
-    // ── Count pending + processing orders ──
-    $pending_count    = 0;
-    $processing_count = 0;
-
-    if ( function_exists( 'wc_orders_count' ) ) {
-        $pending_count    = (int) wc_orders_count( 'pending' );
-        $processing_count = (int) wc_orders_count( 'processing' );
-    } else {
-        $counts           = wp_count_posts( 'shop_order' );
-        $pending_count    = (int) ( $counts->{'wc-pending'}    ?? 0 );
-        $processing_count = (int) ( $counts->{'wc-processing'} ?? 0 );
+    // ── If admin just opened the Orders page: stamp the time and hide badge ──
+    if ( $is_orders_page ) {
+        update_user_meta( $admin_user_id, 'carevee_orders_last_viewed', time() );
+        return; // No badge needed — user is viewing orders right now
     }
 
-    $total = $pending_count + $processing_count;
-    if ( $total < 1 ) return;
+    // ── Retrieve the timestamp of the admin's last Orders visit ──
+    $last_viewed = (int) get_user_meta( $admin_user_id, 'carevee_orders_last_viewed', true );
 
-    // WordPress core bubble markup — identical to Comments counter
-    $badge = ' <span class="awaiting-mod count-' . $total . '" id="carevee-order-badge">'
-           . '<span class="pending-count">' . number_format_i18n( $total ) . '</span>'
+    // ── Count pending + processing orders created AFTER last_viewed ──
+    $new_count = 0;
+
+    if ( function_exists( 'wc_get_orders' ) ) {
+        // HPOS-compatible query
+        $args = [
+            'status'       => [ 'wc-pending', 'wc-processing' ],
+            'limit'        => -1,
+            'return'       => 'ids',
+            'date_created' => '>' . $last_viewed, // Unix timestamp comparison
+        ];
+        $new_orders = wc_get_orders( $args );
+        $new_count  = count( $new_orders );
+    } else {
+        // Legacy post-table fallback
+        global $wpdb;
+        $dt = date( 'Y-m-d H:i:s', $last_viewed );
+        $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts}
+             WHERE post_type = 'shop_order'
+               AND post_status IN ('wc-pending','wc-processing')
+               AND post_date_gmt > %s",
+            $dt
+        ) );
+    }
+
+    if ( $new_count < 1 ) return; // Nothing new — no badge
+
+    // ── WordPress core bubble markup ──
+    $badge = ' <span class="awaiting-mod count-' . $new_count . '" id="carevee-order-badge">'
+           . '<span class="pending-count">' . number_format_i18n( $new_count ) . '</span>'
            . '</span>';
 
-    // ── Patch the Orders sub-menu item ONLY (not the parent WooCommerce item) ──
+    // ── Patch only the Orders sub-menu item ──
     $parents = [ 'woocommerce', 'edit.php?post_type=shop_order' ];
     foreach ( $parents as $parent ) {
         if ( ! isset( $submenu[ $parent ] ) ) continue;
@@ -1001,49 +1051,34 @@ function carevee_wc_order_badge() {
                 $sub[2] === 'edit.php?post_type=shop_order'
             ) ) {
                 $submenu[ $parent ][ $k ][0] .= $badge;
-                break 2; // Patch once only
+                break 2;
             }
         }
     }
 
-    // ── Inline JS: hide badge the moment admin clicks the Orders menu link ──
-    // Also respects sessionStorage so badge stays hidden within the same session
-    // until a fresh page load brings a new count from PHP.
-    add_action( 'admin_footer', function() use ( $total ) {
+    // ── JS: hide badge instantly when admin clicks Orders link ──
+    // (The PHP timestamp is already updated on next page load to the Orders page,
+    //  but this JS gives immediate visual feedback before the navigation completes.)
+    add_action( 'admin_footer', function() {
         ?>
         <script>
         (function(){
-            // If badge was dismissed in this session, hide it immediately on page load
-            // (covers navigating away from Orders and back to another admin page)
-            // Note: The PHP check already suppresses the badge on the Orders page itself,
-            // so this JS only runs on OTHER admin pages where the badge is rendered.
-
             var badge = document.getElementById('carevee-order-badge');
             if (!badge) return;
 
-            // If admin has already visited Orders in this browser session, hide badge
-            if (sessionStorage.getItem('carevee_orders_viewed') === '<?php echo esc_js( (string) $total ); ?>') {
-                badge.style.display = 'none';
-                return;
-            }
+            var ordersPatterns = ['page=wc-orders', 'post_type=shop_order'];
 
-            // Wire up click handler on ALL links that lead to the Orders page
-            var ordersHrefs = [
-                'admin.php?page=wc-orders',
-                'edit.php?post_type=shop_order'
-            ];
-
-            document.querySelectorAll('#adminmenu a').forEach(function(link) {
+            document.querySelectorAll('#adminmenu a').forEach(function(link){
                 var href = link.getAttribute('href') || '';
-                var isOrders = ordersHrefs.some(function(o) { return href.indexOf(o) !== -1; });
+                var isOrders = ordersPatterns.some(function(p){ return href.indexOf(p) !== -1; });
                 if (!isOrders) return;
 
-                link.addEventListener('click', function() {
-                    // Store current total as "seen" — badge will stay hidden for this count
-                    sessionStorage.setItem('carevee_orders_viewed', '<?php echo esc_js( (string) $total ); ?>');
-                    // Immediately hide badge for visual feedback before navigation
+                link.addEventListener('click', function(){
+                    // Immediately hide badge before the page navigates
                     var b = document.getElementById('carevee-order-badge');
                     if (b) b.style.display = 'none';
+                    // PHP will stamp the time when the Orders page loads,
+                    // so no sessionStorage or client-side timestamp needed.
                 });
             });
         })();
