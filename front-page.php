@@ -51,7 +51,7 @@
   <div class="hero-slide hs3">
     <div class="hero-blob"></div>
     <div class="hero-content">
-      <div class="hero-badge">Premium Skincare Range BEEEeen</div>
+      <div class="hero-badge">Premium Skincare Range</div>
       <h1>Glow Up With<br><span>Trusted Skincare</span></h1>
       <p class="hero-desc">Discover certified skincare products loved by thousands of Kenyans. From cleansers to serums, quality you can trust.</p>
       <div class="hero-btns">
