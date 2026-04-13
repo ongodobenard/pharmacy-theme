@@ -57,12 +57,11 @@ function medicare_enqueue() {
     }
 
     wp_localize_script('medicare-main', 'medicareData', [
-        'ajaxUrl'         => admin_url('admin-ajax.php'),
-        'nonce'           => wp_create_nonce('medicare_nonce'),
-        // ★ ADDED: separate nonce for order actions (matches carevee-order.php)
-        'orderNonce'      => wp_create_nonce('carevee_order_nonce'),
-        'waNumber'        => esc_js(medicare_wa()),
-        'shopUrl'         => esc_url($shop_url),
+        'ajaxUrl'    => admin_url('admin-ajax.php'),
+        'nonce'      => wp_create_nonce('medicare_nonce'),
+        'orderNonce' => wp_create_nonce('carevee_order_nonce'),
+        'waNumber'   => esc_js(medicare_wa()),
+        'shopUrl'    => esc_url($shop_url),
     ]);
 }
 add_action('wp_enqueue_scripts', 'medicare_enqueue');
@@ -106,7 +105,6 @@ add_action('woocommerce_before_main_content', function() { echo '<div class="wc-
 add_action('woocommerce_after_main_content',  function() { echo '</div>'; }, 10);
 
 // ─── WHATSAPP ORDER BUTTON (Single Product) ───
-// ★ UPDATED: button now fires carevee_wa_order AJAX first to log in WC, THEN opens WhatsApp
 function medicare_wa_button() {
     if ( !class_exists('WooCommerce') ) return;
     global $product;
@@ -128,10 +126,6 @@ function medicare_wa_button() {
         Buy Via WhatsApp
     </button>
 
-    <?php
-    // ★ Inline JS — handles WA button click: logs order in WC backend first, then opens WhatsApp
-    // This runs once per product page. Uses jQuery (already loaded by WC/theme).
-    ?>
     <script>
     (function($){
         $(document).on('click', '.carevee-wa-order-btn', function(e){
@@ -142,7 +136,6 @@ function medicare_wa_button() {
             var nonce     = $btn.data('nonce');
             var qty       = parseInt($('input.qty').val()) || 1;
 
-            // Disable button momentarily to prevent double-click
             $btn.prop('disabled', true).text('Processing…');
 
             $.ajax({
@@ -153,11 +146,10 @@ function medicare_wa_button() {
                     carevee_order_nonce: nonce,
                     product_id         : productId,
                     qty                : qty,
-                    phone              : '',         // not known at this point — left blank
+                    phone              : '',
                     customer_name      : 'WhatsApp Customer',
                 },
                 complete: function(){
-                    // Always open WhatsApp regardless of AJAX result
                     $btn.prop('disabled', false).html(
                         '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Buy Via WhatsApp'
                     );
@@ -256,7 +248,6 @@ function medicare_filter_products() {
             $price_reg = $product->get_regular_price();
             $img       = get_the_post_thumbnail_url($product_id, 'woocommerce_thumbnail');
             $cart_url  = $product->is_type('simple') ? '?add-to-cart=' . $product_id : get_permalink($product_id);
-            $rwa       = urlencode("Hello! I'd like to order: *" . $product->get_name() . "* — KES " . $product->get_price() . ". " . get_permalink($product_id));
 
             $cats    = get_the_terms($product_id, 'product_cat');
             $cat_n   = ($cats && !is_wp_error($cats)) ? $cats[0]->name : '';
@@ -265,7 +256,6 @@ function medicare_filter_products() {
             if ( !$brands || is_wp_error($brands) ) $brands = get_the_terms($product_id, 'pa_brand');
             $brand_n = ($brands && !is_wp_error($brands)) ? $brands[0]->name : '';
 
-            // ★ WA button in shop loop now also uses data attributes for JS hook
             $wa_product_url = medicare_get_wa_url($product_id);
             $wa_nonce       = wp_create_nonce('carevee_order_nonce');
             ?>
@@ -309,7 +299,6 @@ function medicare_filter_products() {
                     </span>
                     Add to Cart
                   </a>
-                  <?php /* ★ Shop loop WA button — also logs order in WC backend */ ?>
                   <button
                     type="button"
                     class="p-btn-wa carevee-wa-order-btn"
@@ -335,15 +324,12 @@ function medicare_filter_products() {
 add_action('wp_ajax_medicare_filter_products',        'medicare_filter_products');
 add_action('wp_ajax_nopriv_medicare_filter_products', 'medicare_filter_products');
 
-// ─── GLOBAL JS FOR WA ORDER BUTTON (shop loop + product page) ─
-// Handles .carevee-wa-order-btn anywhere on the site.
-// Fires AJAX to log in WC, then opens WhatsApp regardless of result.
+// ─── GLOBAL JS FOR WA ORDER BUTTON ────────────
 add_action('wp_footer', function() {
     if ( ! is_product() && ! is_shop() && ! is_product_category() && ! is_search() ) return;
     ?>
     <script>
     (function($){
-        // Prevent double-binding on product page (already bound inline)
         if (typeof careveeWaBound !== 'undefined') return;
         window.careveeWaBound = true;
 
@@ -355,7 +341,6 @@ add_action('wp_footer', function() {
             var nonce     = $btn.data('nonce');
             var qty       = 1;
 
-            // Try to read quantity from product page input
             var $qtyInput = $('input.qty');
             if ($qtyInput.length) qty = parseInt($qtyInput.val()) || 1;
 
@@ -385,8 +370,6 @@ add_action('wp_footer', function() {
 
 // ─── CONTACT FORM AJAX ────────────────────────
 function medicare_contact() {
-
-    // Always ensure we return clean JSON — catch any stray output
     ob_clean();
 
     if ( !wp_verify_nonce($_POST['nonce'] ?? '', 'medicare_nonce') ) {
@@ -399,7 +382,6 @@ function medicare_contact() {
     $dept  = sanitize_text_field($_POST['contact_dept']    ?? '');
     $msg   = sanitize_textarea_field($_POST['contact_msg'] ?? '');
 
-    // Server-side validation
     if ( empty($name) || strlen($name) < 2 )
         wp_send_json_error(['msg' => 'Please enter your full name.']);
     if ( empty($email) || !is_email($email) )
@@ -431,7 +413,6 @@ function medicare_contact() {
     if ( $sent ) {
         wp_send_json_success(['msg' => 'Message sent successfully!']);
     } else {
-        // Capture PHPMailer error for debugging
         global $phpmailer;
         $smtp_err = ( isset($phpmailer) && !empty($phpmailer->ErrorInfo) )
             ? $phpmailer->ErrorInfo
@@ -441,6 +422,98 @@ function medicare_contact() {
 }
 add_action('wp_ajax_medicare_contact',        'medicare_contact');
 add_action('wp_ajax_nopriv_medicare_contact', 'medicare_contact');
+
+// ─── PRESCRIPTION FORM AJAX ───────────────────
+function carevee_submit_prescription() {
+    ob_clean();
+
+    if ( !wp_verify_nonce($_POST['rx_nonce'] ?? '', 'rx_nonce_action') ) {
+        wp_send_json_error(['msg' => 'Security check failed. Please refresh and try again.']);
+    }
+
+    $fname     = sanitize_text_field($_POST['rx_fname']     ?? '');
+    $lname     = sanitize_text_field($_POST['rx_lname']     ?? '');
+    $age       = sanitize_text_field($_POST['rx_age']       ?? '');
+    $gender    = sanitize_text_field($_POST['rx_gender']    ?? '');
+    $phone     = sanitize_text_field($_POST['rx_phone']     ?? '');
+    $email     = sanitize_email($_POST['rx_email']          ?? '');
+    $location  = sanitize_text_field($_POST['rx_location']  ?? '');
+    $allergies = sanitize_text_field($_POST['rx_allergies'] ?? '');
+    $notes     = sanitize_textarea_field($_POST['rx_notes'] ?? '');
+
+    if ( empty($fname) )    wp_send_json_error(['msg' => 'First name is required.']);
+    if ( empty($lname) )    wp_send_json_error(['msg' => 'Last name is required.']);
+    if ( empty($age) )      wp_send_json_error(['msg' => 'Age is required.']);
+    if ( empty($gender) )   wp_send_json_error(['msg' => 'Please select your gender.']);
+    if ( empty($phone) )    wp_send_json_error(['msg' => 'Phone number is required.']);
+    if ( empty($location) ) wp_send_json_error(['msg' => 'Delivery address is required.']);
+
+    // Handle file upload
+    $attachment = [];
+    if ( !empty($_FILES['rx_file']['name']) ) {
+        $allowed_types = [
+            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        $file_type = $_FILES['rx_file']['type'];
+        if ( !in_array($file_type, $allowed_types) ) {
+            wp_send_json_error(['msg' => 'Invalid file type. Please upload an image, PDF or Word document.']);
+        }
+        if ( $_FILES['rx_file']['size'] > 10 * 1024 * 1024 ) {
+            wp_send_json_error(['msg' => 'File too large. Maximum size is 10MB.']);
+        }
+        $upload = wp_upload_bits($_FILES['rx_file']['name'], null, file_get_contents($_FILES['rx_file']['tmp_name']));
+        if ( $upload['error'] ) {
+            wp_send_json_error(['msg' => 'File upload failed: ' . $upload['error']]);
+        }
+        $attachment[] = $upload['file'];
+    } else {
+        wp_send_json_error(['msg' => 'Please attach your prescription file.']);
+    }
+
+    $to      = 'sales@careveekenya.co.ke';
+    $subject = '[CareVee Prescription] ' . $fname . ' ' . $lname . ' — ' . $phone;
+    $body    = "New Prescription Submission from careveekenya.co.ke\n\n";
+    $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    $body   .= "PATIENT DETAILS\n";
+    $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    $body   .= "Name:            " . $fname . ' ' . $lname . "\n";
+    $body   .= "Age:             " . $age . "\n";
+    $body   .= "Gender:          " . $gender . "\n";
+    $body   .= "Phone:           " . $phone . "\n";
+    $body   .= "Email:           " . ($email ?: 'Not provided') . "\n";
+    $body   .= "Delivery Address:" . $location . "\n";
+    $body   .= "Allergies:       " . ($allergies ?: 'None mentioned') . "\n";
+    $body   .= "Notes:           " . ($notes ?: 'None') . "\n";
+    $body   .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    $body   .= "Prescription file is attached to this email.\n";
+    $body   .= "Please review and contact the patient via phone or WhatsApp.\n\n";
+    $body   .= "Submitted: " . current_time('mysql') . "\n";
+
+    $headers = ['Content-Type: text/plain; charset=UTF-8'];
+    if ( $email ) {
+        $headers[] = "Reply-To: {$fname} {$lname} <{$email}>";
+    }
+
+    $sent = wp_mail($to, $subject, $body, $headers, $attachment);
+
+    // Clean up uploaded file after sending
+    if ( !empty($attachment[0]) && file_exists($attachment[0]) ) {
+        @unlink($attachment[0]);
+    }
+
+    if ( $sent ) {
+        wp_send_json_success(['msg' => 'Your prescription was successfully received! Our professional pharmacist will review it and get back to you soon.']);
+    } else {
+        global $phpmailer;
+        $err = (isset($phpmailer) && !empty($phpmailer->ErrorInfo)) ? $phpmailer->ErrorInfo : 'Unknown error.';
+        wp_send_json_error(['msg' => 'Failed to send: ' . $err]);
+    }
+}
+add_action('wp_ajax_carevee_submit_prescription',        'carevee_submit_prescription');
+add_action('wp_ajax_nopriv_carevee_submit_prescription', 'carevee_submit_prescription');
 
 // ─── ADMIN SETTINGS PAGE ──────────────────────
 function medicare_admin_menu() {
