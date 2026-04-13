@@ -4,42 +4,43 @@
  * Updated: April 2026
  *
  * CHANGES:
- * - Email field is now MANDATORY for Place Order button
- * - Cart + form fully reset (client-side) after successful order
+ * - No emojis — Dashicons only throughout
+ * - Cart + form reset IMMEDIATELY after successful Place Order (not on Continue Shopping)
  * - Success message shows customer email confirmation was sent
  * - Cart count in header updated to 0 after successful order
+ * - Steps bar advances to Confirmation immediately on success
  * - All AJAX handlers remain in functions.php
  */
 
 /* ════════════════════════════════════════════════════════════
    SUPPRESS ALL WOOCOMMERCE NOTICES ON CHECKOUT PAGE
 ════════════════════════════════════════════════════════════ */
-add_action('template_redirect', function(){
-  if ( function_exists('wc_clear_notices') ) wc_clear_notices();
-}, 1);
+add_action( 'template_redirect', function () {
+    if ( function_exists( 'wc_clear_notices' ) ) wc_clear_notices();
+}, 1 );
 
-add_action('template_redirect', function(){
-  remove_all_actions('woocommerce_before_checkout_form');
-  add_action('woocommerce_before_checkout_form', 'woocommerce_checkout_login_form', 10);
-  add_action('woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form', 10);
-}, 5);
+add_action( 'template_redirect', function () {
+    remove_all_actions( 'woocommerce_before_checkout_form' );
+    add_action( 'woocommerce_before_checkout_form', 'woocommerce_checkout_login_form', 10 );
+    add_action( 'woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form', 10 );
+}, 5 );
 
-remove_action('woocommerce_before_checkout_form', 'woocommerce_output_all_notices', 10);
-add_action('wp', function(){
-  remove_action('woocommerce_before_checkout_form', 'woocommerce_output_all_notices', 10);
-  remove_action('woocommerce_before_cart',          'woocommerce_output_all_notices', 10);
-  remove_action('woocommerce_before_shop_loop',     'woocommerce_output_all_notices', 10);
-});
+remove_action( 'woocommerce_before_checkout_form', 'woocommerce_output_all_notices', 10 );
+add_action( 'wp', function () {
+    remove_action( 'woocommerce_before_checkout_form', 'woocommerce_output_all_notices', 10 );
+    remove_action( 'woocommerce_before_cart',          'woocommerce_output_all_notices', 10 );
+    remove_action( 'woocommerce_before_shop_loop',     'woocommerce_output_all_notices', 10 );
+} );
 
-add_filter('woocommerce_add_message', '__return_empty_string');
-add_filter('woocommerce_add_notice',  '__return_empty_string');
+add_filter( 'woocommerce_add_message', '__return_empty_string' );
+add_filter( 'woocommerce_add_notice',  '__return_empty_string' );
 
-add_action('wp_loaded', function(){
-  if ( function_exists('wc_clear_notices') ) wc_clear_notices();
-}, 1);
+add_action( 'wp_loaded', function () {
+    if ( function_exists( 'wc_clear_notices' ) ) wc_clear_notices();
+}, 1 );
 
 get_header();
-wp_enqueue_style('dashicons');
+wp_enqueue_style( 'dashicons' );
 ?>
 <style>
 /* ════════════════════════════════════════════════════════
@@ -93,9 +94,8 @@ wp_enqueue_style('dashicons');
 .chkp-field-error{font-size:.7rem;color:#e53935;font-family:'Nunito',sans-serif;margin-top:2px;display:none;}
 .chkp-fg.has-error .chkp-field-error{display:block;}
 
-/* ── EMAIL REQUIRED NOTE ── */
+/* ── EMAIL NOTE ── */
 .chkp-email-note{font-size:.7rem;color:#2eaf6e;font-family:'Nunito',sans-serif;margin-top:3px;display:flex;align-items:center;gap:4px;}
-.chkp-email-note svg{flex-shrink:0;}
 
 /* ── VALIDATION BANNER ── */
 .chkp-validation-msg{display:none;background:#fff0f0;border:1.5px solid #e53935;border-left:4px solid #e53935;border-radius:10px;padding:11px 14px;font-family:'Nunito',sans-serif;font-size:.83rem;color:#b71c1c;margin-bottom:12px;}
@@ -176,9 +176,9 @@ wp_enqueue_style('dashicons');
 .chkp-place-btn.loading .chkp-btn-label{opacity:.7;}
 @keyframes cvSpin{to{transform:rotate(360deg);}}
 
-/* ── FORM HIDDEN AFTER SUCCESS ── */
-.chkp-form-hidden .chkp-card{display:none;}
-.chkp-form-hidden .chkp-success-card{display:block!important;}
+/* ── FORM FADED AFTER SUCCESS ── */
+.chkp-form-faded .chkp-card{opacity:0.3;pointer-events:none;transition:opacity .4s;}
+.chkp-form-faded #chkp-actions-card-desktop{opacity:1;pointer-events:auto;}
 
 /* ── RESPONSIVE ── */
 @media(max-width:960px){
@@ -192,7 +192,7 @@ wp_enqueue_style('dashicons');
 @media(max-width:360px){.chkp-wrap{padding:8px 2%;}.chkp-card-body{padding:8px 6px;}.chkp-fg input,.chkp-fg select{padding:6px 8px;font-size:.76rem;}.chkp-wa-btn{font-size:.78rem;padding:10px 8px;gap:6px;}.chkp-place-btn{font-size:.76rem;padding:10px 8px;}}
 </style>
 
-<?php if ( function_exists('wc_clear_notices') ) wc_clear_notices(); ?>
+<?php if ( function_exists( 'wc_clear_notices' ) ) wc_clear_notices(); ?>
 
 <!-- BANNER -->
 <section class="chkp-banner">
@@ -202,8 +202,8 @@ wp_enqueue_style('dashicons');
       Checkout
     </h1>
     <nav class="chkp-breadcrumb">
-      <a href="<?php echo esc_url(home_url('/')); ?>">Home</a> &rsaquo;
-      <a href="<?php echo esc_url(wc_get_cart_url()); ?>">Cart</a> &rsaquo;
+      <a href="<?php echo esc_url( home_url( '/' ) ); ?>">Home</a> &rsaquo;
+      <a href="<?php echo esc_url( wc_get_cart_url() ); ?>">Cart</a> &rsaquo;
       <span>Checkout</span>
     </nav>
   </div>
@@ -231,15 +231,15 @@ wp_enqueue_style('dashicons');
 
 <!-- MAIN -->
 <div class="chkp-wrap">
-<?php if ( function_exists('WC') && WC()->cart ) :
-  if ( function_exists('wc_clear_notices') ) wc_clear_notices();
-  $checkout    = WC()->checkout();
-  $val         = function($key) use ($checkout) { $v = $checkout->get_value($key); return esc_attr($v ?? ''); };
-  $countries   = WC()->countries->get_allowed_countries();
-  $sel_country = $val('billing_country') ?: 'KE';
-  $states      = WC()->countries->get_states($sel_country) ?: [];
-  $sel_state   = $val('billing_state');
-  $order_nonce = wp_create_nonce('carevee_order_nonce');
+<?php if ( function_exists( 'WC' ) && WC()->cart ) :
+    if ( function_exists( 'wc_clear_notices' ) ) wc_clear_notices();
+    $checkout    = WC()->checkout();
+    $val         = function ( $key ) use ( $checkout ) { $v = $checkout->get_value( $key ); return esc_attr( $v ?? '' ); };
+    $countries   = WC()->countries->get_allowed_countries();
+    $sel_country = $val( 'billing_country' ) ?: 'KE';
+    $states      = WC()->countries->get_states( $sel_country ) ?: [];
+    $sel_state   = $val( 'billing_state' );
+    $order_nonce = wp_create_nonce( 'carevee_order_nonce' );
 ?>
 <div class="chkp-layout">
 
@@ -247,13 +247,13 @@ wp_enqueue_style('dashicons');
   <div class="chkp-left" id="chkp-left">
     <form name="checkout" method="post" id="chkp-form"
           class="checkout woocommerce-checkout"
-          action="<?php echo esc_url(wc_get_checkout_url()); ?>"
+          action="<?php echo esc_url( wc_get_checkout_url() ); ?>"
           enctype="multipart/form-data" novalidate>
 
-      <?php do_action('woocommerce_checkout_before_customer_details'); ?>
+      <?php do_action( 'woocommerce_checkout_before_customer_details' ); ?>
 
       <!-- BILLING -->
-      <div class="chkp-card">
+      <div class="chkp-card" id="chkp-card-billing">
         <div class="chkp-card-head">
           <span class="dashicons dashicons-admin-users"></span>
           <h3>Contact &amp; Billing Information</h3>
@@ -263,26 +263,26 @@ wp_enqueue_style('dashicons');
 
             <div class="chkp-fg" data-field="billing_first_name">
               <label>First name <span class="req">*</span></label>
-              <input type="text" name="billing_first_name" id="billing_first_name" value="<?php echo $val('billing_first_name'); ?>" placeholder="First name" autocomplete="given-name">
+              <input type="text" name="billing_first_name" id="billing_first_name" value="<?php echo $val( 'billing_first_name' ); ?>" placeholder="First name" autocomplete="given-name">
               <span class="chkp-field-error">First name is required</span>
             </div>
 
             <div class="chkp-fg" data-field="billing_last_name">
               <label>Last name <span class="req">*</span></label>
-              <input type="text" name="billing_last_name" id="billing_last_name" value="<?php echo $val('billing_last_name'); ?>" placeholder="Last name" autocomplete="family-name">
+              <input type="text" name="billing_last_name" id="billing_last_name" value="<?php echo $val( 'billing_last_name' ); ?>" placeholder="Last name" autocomplete="family-name">
               <span class="chkp-field-error">Last name is required</span>
             </div>
 
             <div class="chkp-fg span2" data-field="billing_company">
               <label>Company <span class="opt">(optional)</span></label>
-              <input type="text" name="billing_company" id="billing_company" value="<?php echo $val('billing_company'); ?>" placeholder="Company name" autocomplete="organization">
+              <input type="text" name="billing_company" id="billing_company" value="<?php echo $val( 'billing_company' ); ?>" placeholder="Company name" autocomplete="organization">
             </div>
 
             <div class="chkp-fg" data-field="billing_country">
               <label>Country / Region <span class="req">*</span></label>
               <select name="billing_country" id="billing_country">
-                <?php foreach ($countries as $code => $name) : ?>
-                  <option value="<?php echo esc_attr($code); ?>" <?php selected($sel_country,$code); ?>><?php echo esc_html($name); ?></option>
+                <?php foreach ( $countries as $code => $name ) : ?>
+                  <option value="<?php echo esc_attr( $code ); ?>" <?php selected( $sel_country, $code ); ?>><?php echo esc_html( $name ); ?></option>
                 <?php endforeach; ?>
               </select>
               <span class="chkp-field-error">Country is required</span>
@@ -290,34 +290,34 @@ wp_enqueue_style('dashicons');
 
             <div class="chkp-fg" data-field="billing_phone">
               <label>Phone <span class="req">*</span></label>
-              <input type="tel" name="billing_phone" id="billing_phone" value="<?php echo $val('billing_phone'); ?>" placeholder="+254 7XX XXX XXX" autocomplete="tel">
+              <input type="tel" name="billing_phone" id="billing_phone" value="<?php echo $val( 'billing_phone' ); ?>" placeholder="+254 7XX XXX XXX" autocomplete="tel">
               <span class="chkp-field-error">Phone number is required</span>
             </div>
 
             <div class="chkp-fg" data-field="billing_address_1">
               <label>Street address <span class="req">*</span></label>
-              <input type="text" name="billing_address_1" id="billing_address_1" value="<?php echo $val('billing_address_1'); ?>" placeholder="House number and street" autocomplete="address-line1">
+              <input type="text" name="billing_address_1" id="billing_address_1" value="<?php echo $val( 'billing_address_1' ); ?>" placeholder="House number and street" autocomplete="address-line1">
               <span class="chkp-field-error">Street address is required</span>
             </div>
 
             <div class="chkp-fg" data-field="billing_address_2">
               <label>Apartment / Suite <span class="opt">(optional)</span></label>
-              <input type="text" name="billing_address_2" id="billing_address_2" value="<?php echo $val('billing_address_2'); ?>" placeholder="Apartment, suite, unit, etc." autocomplete="address-line2">
+              <input type="text" name="billing_address_2" id="billing_address_2" value="<?php echo $val( 'billing_address_2' ); ?>" placeholder="Apartment, suite, unit, etc." autocomplete="address-line2">
             </div>
 
             <div class="chkp-fg" data-field="billing_city">
               <label>Town / City <span class="req">*</span></label>
-              <input type="text" name="billing_city" id="billing_city" value="<?php echo $val('billing_city'); ?>" placeholder="City" autocomplete="address-level2">
+              <input type="text" name="billing_city" id="billing_city" value="<?php echo $val( 'billing_city' ); ?>" placeholder="City" autocomplete="address-level2">
               <span class="chkp-field-error">City is required</span>
             </div>
 
             <div class="chkp-fg" data-field="billing_state">
               <label>State / County <span class="req">*</span></label>
-              <?php if ($states) : ?>
+              <?php if ( $states ) : ?>
                 <select name="billing_state" id="billing_state">
                   <option value="">Select county...</option>
-                  <?php foreach ($states as $code => $name) : ?>
-                    <option value="<?php echo esc_attr($code); ?>" <?php selected($sel_state,$code); ?>><?php echo esc_html($name); ?></option>
+                  <?php foreach ( $states as $code => $name ) : ?>
+                    <option value="<?php echo esc_attr( $code ); ?>" <?php selected( $sel_state, $code ); ?>><?php echo esc_html( $name ); ?></option>
                   <?php endforeach; ?>
                 </select>
               <?php else : ?>
@@ -328,16 +328,16 @@ wp_enqueue_style('dashicons');
 
             <div class="chkp-fg" data-field="billing_postcode">
               <label>Postcode / ZIP <span class="opt">(optional)</span></label>
-              <input type="text" name="billing_postcode" id="billing_postcode" value="<?php echo $val('billing_postcode'); ?>" placeholder="Postcode" autocomplete="postal-code">
+              <input type="text" name="billing_postcode" id="billing_postcode" value="<?php echo $val( 'billing_postcode' ); ?>" placeholder="Postcode" autocomplete="postal-code">
             </div>
 
             <!-- EMAIL — REQUIRED for Place Order -->
             <div class="chkp-fg span2" data-field="billing_email">
               <label>Email address <span class="req">*</span> <span class="opt">(order confirmation will be sent here)</span></label>
-              <input type="email" name="billing_email" id="billing_email" value="<?php echo $val('billing_email'); ?>" placeholder="your@email.com" autocomplete="email">
+              <input type="email" name="billing_email" id="billing_email" value="<?php echo $val( 'billing_email' ); ?>" placeholder="your@email.com" autocomplete="email">
               <span class="chkp-field-error">A valid email address is required to receive your order confirmation</span>
               <div class="chkp-email-note">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span class="dashicons dashicons-email-alt" style="font-size:12px;width:12px;height:12px;color:#2eaf6e;"></span>
                 Your order confirmation email will be sent to this address.
               </div>
             </div>
@@ -346,10 +346,10 @@ wp_enqueue_style('dashicons');
         </div>
       </div>
 
-      <?php do_action('woocommerce_checkout_after_customer_details'); ?>
+      <?php do_action( 'woocommerce_checkout_after_customer_details' ); ?>
 
       <!-- PAYMENT -->
-      <div class="chkp-card">
+      <div class="chkp-card" id="chkp-card-payment">
         <div class="chkp-card-head">
           <span class="dashicons dashicons-money-alt"></span>
           <h3>Payment Method</h3>
@@ -361,12 +361,12 @@ wp_enqueue_style('dashicons');
             <div class="chkp-pay-pill"><span class="dashicons dashicons-credit-card"></span>Visa / Mastercard</div>
             <div class="chkp-pay-pill"><span class="dashicons dashicons-bank"></span>Bank Transfer</div>
           </div>
-          <?php do_action('woocommerce_checkout_payment'); ?>
+          <?php do_action( 'woocommerce_checkout_payment' ); ?>
         </div>
       </div>
 
       <!-- ORDER NOTES -->
-      <div class="chkp-card">
+      <div class="chkp-card" id="chkp-card-notes">
         <div class="chkp-card-head">
           <span class="dashicons dashicons-edit-page"></span>
           <h3>Order Notes <span style="font-size:.68rem;color:#8aaa98;font-weight:500;">(optional)</span></h3>
@@ -383,8 +383,8 @@ wp_enqueue_style('dashicons');
       <!-- ACTIONS — DESKTOP ONLY -->
       <div class="chkp-card" id="chkp-actions-card-desktop">
         <div class="chkp-card-body">
-          <?php if (function_exists('woocommerce_checkout_privacy_policy_text')) woocommerce_checkout_privacy_policy_text(); ?>
-          <?php if (function_exists('woocommerce_terms_and_conditions_page_content')) woocommerce_terms_and_conditions_page_content(); ?>
+          <?php if ( function_exists( 'woocommerce_checkout_privacy_policy_text' ) ) woocommerce_checkout_privacy_policy_text(); ?>
+          <?php if ( function_exists( 'woocommerce_terms_and_conditions_page_content' ) ) woocommerce_terms_and_conditions_page_content(); ?>
 
           <!-- Validation error -->
           <div class="chkp-validation-msg" id="chkp-val-msg">
@@ -392,24 +392,24 @@ wp_enqueue_style('dashicons');
             <span id="chkp-val-detail"></span>
           </div>
 
-          <!-- Success feedback -->
+          <!-- Success banner -->
           <div class="chkp-success-banner" id="chkp-success-desktop">
             <div class="chkp-success-banner-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2eaf6e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Order Placed Successfully!
+              <span class="dashicons dashicons-yes-alt" style="color:#2eaf6e;font-size:18px;width:18px;height:18px;"></span>
+              Order Placed Successfully
             </div>
             <div class="chkp-success-banner-body">
               Your order has been saved and our team will contact you shortly to confirm delivery.<br>
               For urgent enquiries: <a href="https://wa.me/254790007616" target="_blank">WhatsApp +254 790 007616</a>
               <div class="chkp-success-email-note" id="chkp-email-note-desktop" style="display:none;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span class="dashicons dashicons-email-alt" style="font-size:13px;width:13px;height:13px;color:#2eaf6e;flex-shrink:0;"></span>
                 <span id="chkp-email-note-text-desktop">A confirmation email has been sent to your inbox.</span>
               </div>
               <div><span class="chkp-success-banner-order" id="chkp-order-badge-desktop"></span></div>
             </div>
           </div>
 
-          <!-- Error feedback -->
+          <!-- Error banner -->
           <div class="chkp-error-banner" id="chkp-error-desktop"></div>
 
           <div class="chkp-desktop-actions" id="chkp-desktop-actions">
@@ -423,23 +423,23 @@ wp_enqueue_style('dashicons');
               <span class="dashicons dashicons-yes-alt" style="font-size:15px;width:15px;height:15px;"></span>
               <span class="chkp-btn-label">Place Order &amp; Send Confirmation</span>
             </button>
-            <a href="<?php echo esc_url(wc_get_cart_url()); ?>" class="chkp-back">
+            <a href="<?php echo esc_url( wc_get_cart_url() ); ?>" class="chkp-back">
               <span class="dashicons dashicons-arrow-left-alt" style="font-size:13px;width:13px;height:13px;"></span>
               Return to Cart
             </a>
           </div>
 
-          <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
+          <a href="<?php echo esc_url( function_exists( 'wc_get_page_id' ) ? get_permalink( wc_get_page_id( 'shop' ) ) : home_url( '/shop' ) ); ?>"
              class="chkp-place-btn" id="chkp-continue-desktop"
              style="display:none;text-decoration:none;margin-top:10px;background:#1e8a54;">
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+             <span class="dashicons dashicons-cart" style="font-size:14px;width:14px;height:14px;"></span>
              Continue Shopping
           </a>
         </div>
       </div>
 
     </form>
-    <?php do_action('woocommerce_after_checkout_form', $checkout); ?>
+    <?php do_action( 'woocommerce_after_checkout_form', $checkout ); ?>
   </div>
 
   <!-- SIDEBAR / ORDER SUMMARY -->
@@ -447,9 +447,9 @@ wp_enqueue_style('dashicons');
     <div class="chkp-summary-card">
       <div class="chkp-summary-head">
         <span class="dashicons dashicons-list-view"></span>
-        <h3>Order Summary <?php $cnt=intval(WC()->cart->get_cart_contents_count()); echo '('.$cnt.' item'.($cnt!=1?'s':'').')'; ?></h3>
+        <h3 id="chkp-summary-title">Order Summary <?php $cnt = intval( WC()->cart->get_cart_contents_count() ); echo '(' . $cnt . ' item' . ( $cnt !== 1 ? 's' : '' ) . ')'; ?></h3>
       </div>
-      <?php do_action('woocommerce_checkout_order_review'); ?>
+      <?php do_action( 'woocommerce_checkout_order_review' ); ?>
       <div class="chkp-pay-note">
         <div class="chkp-pnr nairobi"><span class="dashicons dashicons-location"></span><span><strong>Nairobi:</strong> Pay on delivery: Cash or M-Pesa</span></div>
         <div class="chkp-pnr county"><span class="dashicons dashicons-warning"></span><span><strong>Other Counties:</strong> Full payment before dispatch</span></div>
@@ -467,14 +467,14 @@ wp_enqueue_style('dashicons');
 
     <div class="chkp-success-banner" id="chkp-success-mobile">
       <div class="chkp-success-banner-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2eaf6e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        Order Placed Successfully!
+        <span class="dashicons dashicons-yes-alt" style="color:#2eaf6e;font-size:18px;width:18px;height:18px;"></span>
+        Order Placed Successfully
       </div>
       <div class="chkp-success-banner-body">
         Your order has been saved and our team will contact you shortly to confirm delivery.<br>
         <a href="https://wa.me/254790007616" target="_blank">WhatsApp +254 790 007616</a>
         <div class="chkp-success-email-note" id="chkp-email-note-mobile" style="display:none;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          <span class="dashicons dashicons-email-alt" style="font-size:13px;width:13px;height:13px;color:#2eaf6e;flex-shrink:0;"></span>
           <span id="chkp-email-note-text-mobile">A confirmation email has been sent to your inbox.</span>
         </div>
         <div><span class="chkp-success-banner-order" id="chkp-order-badge-mobile"></span></div>
@@ -495,14 +495,14 @@ wp_enqueue_style('dashicons');
       <span class="chkp-btn-label">Place Order</span>
     </button>
 
-    <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
+    <a href="<?php echo esc_url( function_exists( 'wc_get_page_id' ) ? get_permalink( wc_get_page_id( 'shop' ) ) : home_url( '/shop' ) ); ?>"
        class="chkp-place-btn" id="chkp-continue-mobile"
        style="display:none;text-decoration:none;background:#1e8a54;">
-       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+       <span class="dashicons dashicons-cart" style="font-size:14px;width:14px;height:14px;"></span>
        Continue Shopping
     </a>
 
-    <a href="<?php echo esc_url(wc_get_cart_url()); ?>" class="chkp-back">
+    <a href="<?php echo esc_url( wc_get_cart_url() ); ?>" class="chkp-back">
       <span class="dashicons dashicons-arrow-left-alt" style="font-size:13px;width:13px;height:13px;"></span>
       Return to Cart
     </a>
@@ -516,10 +516,10 @@ wp_enqueue_style('dashicons');
 <script>
 (function(){
 
-  var AJAX_URL    = '<?php echo esc_js(admin_url("admin-ajax.php")); ?>';
-  var ORDER_NONCE = '<?php echo esc_js($order_nonce); ?>';
-  var SHOP_URL    = '<?php echo esc_js(function_exists("wc_get_page_id") ? get_permalink(wc_get_page_id("shop")) : home_url("/shop")); ?>';
-  var SENT_URL    = '<?php echo esc_js(home_url("/?carevee_order_sent=1")); ?>';
+  var AJAX_URL    = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+  var ORDER_NONCE = '<?php echo esc_js( $order_nonce ); ?>';
+  var SHOP_URL    = '<?php echo esc_js( function_exists( "wc_get_page_id" ) ? get_permalink( wc_get_page_id( "shop" ) ) : home_url( "/shop" ) ); ?>';
+  var SENT_URL    = '<?php echo esc_js( home_url( "/?carevee_order_sent=1" ) ); ?>';
 
   /* ── NUKE NOTICES ── */
   function nukeNotices() {
@@ -532,7 +532,7 @@ wp_enqueue_style('dashicons');
     new MutationObserver(function(muts){ muts.forEach(function(m){ m.addedNodes.forEach(function(n){ if(n.nodeType===1){var c=n.className||'';if(['woocommerce-message','woocommerce-info','woocommerce-error','woocommerce-NoticeGroup','woocommerce-notices-wrapper'].some(function(k){return c.indexOf(k)>-1;}))nukeNotices();} }); }); }).observe(document.body,{childList:true,subtree:true});
   }
 
-  /* ── REQUIRED FIELDS — email now mandatory ── */
+  /* ── REQUIRED FIELDS — email mandatory ── */
   var required = [
     {id:'billing_first_name', label:'First name'},
     {id:'billing_last_name',  label:'Last name'},
@@ -557,7 +557,6 @@ wp_enqueue_style('dashicons');
     required.forEach(function(f){
       var val = getVal(f.id);
       var invalid = !val;
-      // Extra check for email format
       if(!invalid && f.type === 'email'){
         invalid = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
       }
@@ -603,7 +602,7 @@ wp_enqueue_style('dashicons');
     var itemLines=[];
     document.querySelectorAll('.woocommerce-checkout-review-order-table tbody tr').forEach(function(tr){
       var name=tr.querySelector('.product-name'); var total=tr.querySelector('.product-total');
-      if(name&&total)itemLines.push(name.textContent.trim()+' — '+total.textContent.trim());
+      if(name&&total)itemLines.push(name.textContent.trim()+' - '+total.textContent.trim());
     });
     var grandTotal='';
     var totRow=document.querySelector('.woocommerce-checkout-review-order-table tfoot .order-total .amount');
@@ -630,55 +629,57 @@ wp_enqueue_style('dashicons');
     .catch(function(){ if(onDone) onDone(null); });
   }
 
-  /* ── RESET FORM + CART AFTER SUCCESS ── */
+  /* ════════════════════════════════════════════════════
+     RESET FORM + CART IMMEDIATELY AFTER SUCCESSFUL ORDER
+     Called right after server responds with success.
+  ════════════════════════════════════════════════════ */
   function resetCheckoutAfterOrder(){
-    // 1. Reset all form fields
+
+    // 1. Reset all visible form fields
     var form = document.getElementById('chkp-form');
     if(form){
-      var inputs = form.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])');
-      inputs.forEach(function(inp){ inp.value=''; });
-      var textareas = form.querySelectorAll('textarea');
-      textareas.forEach(function(ta){ ta.value=''; });
-      // Reset selects to first option
-      var selects = form.querySelectorAll('select');
-      selects.forEach(function(sel){ sel.selectedIndex=0; });
-      // Remove all error classes
+      form.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])').forEach(function(inp){ inp.value=''; });
+      form.querySelectorAll('textarea').forEach(function(ta){ ta.value=''; });
+      form.querySelectorAll('select').forEach(function(sel){ sel.selectedIndex=0; });
       form.querySelectorAll('.has-error').forEach(function(el){ el.classList.remove('has-error'); });
       form.querySelectorAll('.error').forEach(function(el){ el.classList.remove('error'); });
     }
 
-    // 2. Zero the cart counter in header (common WooCommerce cart count selectors)
-    var cartCounters = document.querySelectorAll(
-      '.cart-contents-count, .wc-cart-count, .cart-count, ' +
-      '.site-header-cart .count, .widget_shopping_cart_content, ' +
-      'a.cart-contents span.count, .header-cart-count, ' +
-      '.cart-item-count, [class*="cart"] .count, ' +
-      '.chkp-summary-head h3'
-    );
-    cartCounters.forEach(function(el){
-      if(el.textContent.match(/\d/)){
+    // 2. Zero the cart counter in header (covers common WooCommerce cart count selectors)
+    var cartSelectors = [
+      '.cart-contents-count',
+      '.wc-cart-count',
+      '.cart-count',
+      '.site-header-cart .count',
+      'a.cart-contents span.count',
+      '.header-cart-count',
+      '.cart-item-count',
+      '[class*="cart-"] .count',
+      '.count'
+    ];
+    document.querySelectorAll( cartSelectors.join(',') ).forEach(function(el){
+      if( /\d/.test(el.textContent) ){
         el.textContent = el.textContent.replace(/\d+/, '0');
       }
     });
 
     // 3. Clear the order summary table rows
     var tbody = document.querySelector('.woocommerce-checkout-review-order-table tbody');
-    if(tbody) tbody.innerHTML = '<tr><td colspan="2" style="padding:12px 14px;font-size:.8rem;color:#8aaa98;font-family:Nunito,sans-serif;">Cart is empty</td></tr>';
+    if(tbody) tbody.innerHTML = '<tr><td colspan="2" style="padding:12px 14px;font-size:.8rem;color:#8aaa98;font-family:Nunito,sans-serif;text-align:center;">Cart cleared</td></tr>';
 
-    // 4. Zero out total in sidebar
+    // 4. Zero order total in sidebar
     var totCell = document.querySelector('.woocommerce-checkout-review-order-table tfoot .order-total .amount');
     if(totCell) totCell.textContent = 'KES 0.00';
 
     // 5. Update sidebar header count text
-    var sidebarHead = document.querySelector('.chkp-summary-head h3');
+    var sidebarHead = document.getElementById('chkp-summary-title');
     if(sidebarHead) sidebarHead.textContent = 'Order Summary (0 items)';
 
-    // 6. Hide all form cards (visual clean state)
-    var formCards = document.querySelectorAll('#chkp-left .chkp-card');
-    formCards.forEach(function(card){
-      // Keep the actions card visible so success banner is shown
-      var actionsCard = document.getElementById('chkp-actions-card-desktop');
-      if(card !== actionsCard){
+    // 6. Fade form cards (except the actions card which shows success)
+    var cardsToFade = ['chkp-card-billing','chkp-card-payment','chkp-card-notes'];
+    cardsToFade.forEach(function(id){
+      var card = document.getElementById(id);
+      if(card){
         card.style.transition = 'opacity .4s';
         card.style.opacity = '0.3';
         card.style.pointerEvents = 'none';
@@ -704,24 +705,26 @@ wp_enqueue_style('dashicons');
 
     // Show email confirmation note
     if(emailNote && customerEmail){
-      if(emailText) emailText.textContent = '📧 A confirmation email has been sent to ' + customerEmail;
+      if(emailText) emailText.textContent = 'A confirmation email has been sent to ' + customerEmail;
       emailNote.style.display = 'flex';
     }
 
-    // Advance steps indicator
+    // Advance steps indicator to Confirmation
     var step3 = document.getElementById('chkp-step-3');
     var line2  = document.getElementById('chkp-step-line-2');
     var step2  = document.getElementById('chkp-step-2');
     if(step3){ step3.classList.add('active'); }
     if(line2){ line2.classList.add('done'); }
-    if(step2){ step2.classList.remove('active'); step2.classList.add('done');
+    if(step2){
+      step2.classList.remove('active');
+      step2.classList.add('done');
       var num = step2.querySelector('.chkp-step-num');
       if(num) num.innerHTML = '<span class="dashicons dashicons-yes" style="font-size:10px;width:10px;height:10px;"></span>';
     }
 
     if(succEl) succEl.scrollIntoView({behavior:'smooth',block:'center'});
 
-    // Reset form + cart display
+    // IMMEDIATELY reset form + cart — no need to wait for Continue Shopping
     resetCheckoutAfterOrder();
   }
 
@@ -729,7 +732,7 @@ wp_enqueue_style('dashicons');
     var suffix = isDesktop ? '-desktop' : '-mobile';
     var errEl  = document.getElementById('chkp-error'+suffix);
     if(!errEl) return;
-    errEl.innerHTML = '⚠️ <strong>'+msg+'</strong><br><small>You can also order via <a href="https://wa.me/254790007616" style="color:#b71c1c;">WhatsApp +254 790 007616</a></small>';
+    errEl.innerHTML = '<strong>'+msg+'</strong><br><small>You can also order via <a href="https://wa.me/254790007616" style="color:#b71c1c;">WhatsApp +254 790 007616</a></small>';
     errEl.classList.add('show');
     errEl.scrollIntoView({behavior:'smooth',block:'center'});
   }
@@ -760,10 +763,10 @@ wp_enqueue_style('dashicons');
         // Order saved but email may have had issue — still show success
         showSuccess(res.data.order_id, customerEmail, isDesktop);
       } else {
-        var msg = (res && res.data && res.data.msg)
+        var errMsg = (res && res.data && res.data.msg)
           ? res.data.msg
           : 'Something went wrong. Please try again or contact us via WhatsApp.';
-        showError(msg, isDesktop);
+        showError(errMsg, isDesktop);
       }
     });
   }
@@ -771,7 +774,7 @@ wp_enqueue_style('dashicons');
   function handleWaOrder(isDesktop){
     var valMsg    = isDesktop ? 'chkp-val-msg'    : 'chkp-val-msg-mobile';
     var valDetail = isDesktop ? 'chkp-val-detail' : 'chkp-val-detail-mobile';
-    // WA orders only validate the core fields (email NOT required for WA)
+    // WA checkout orders validate core fields only (email NOT required for WA)
     var waRequired = ['billing_first_name','billing_last_name','billing_country','billing_phone','billing_address_1','billing_city','billing_state'];
     var missing=[], hasError=false;
     waRequired.forEach(function(id){
@@ -828,7 +831,6 @@ wp_enqueue_style('dashicons');
     if(!inp||!wrap) return;
     function clear(){
       if(inp.value.trim()){
-        // For email, also check format before clearing error
         if(f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inp.value.trim())) return;
         wrap.classList.remove('has-error');
         inp.classList.remove('error');
