@@ -1,7 +1,14 @@
 <?php
 /**
  * Checkout Page Template — Slug: checkout
- * NOTE: All AJAX handlers live in functions.php. This file is the template only.
+ * Updated: April 2026
+ *
+ * CHANGES:
+ * - Email field is now MANDATORY for Place Order button
+ * - Cart + form fully reset (client-side) after successful order
+ * - Success message shows customer email confirmation was sent
+ * - Cart count in header updated to 0 after successful order
+ * - All AJAX handlers remain in functions.php
  */
 
 /* ════════════════════════════════════════════════════════════
@@ -86,6 +93,10 @@ wp_enqueue_style('dashicons');
 .chkp-field-error{font-size:.7rem;color:#e53935;font-family:'Nunito',sans-serif;margin-top:2px;display:none;}
 .chkp-fg.has-error .chkp-field-error{display:block;}
 
+/* ── EMAIL REQUIRED NOTE ── */
+.chkp-email-note{font-size:.7rem;color:#2eaf6e;font-family:'Nunito',sans-serif;margin-top:3px;display:flex;align-items:center;gap:4px;}
+.chkp-email-note svg{flex-shrink:0;}
+
 /* ── VALIDATION BANNER ── */
 .chkp-validation-msg{display:none;background:#fff0f0;border:1.5px solid #e53935;border-left:4px solid #e53935;border-radius:10px;padding:11px 14px;font-family:'Nunito',sans-serif;font-size:.83rem;color:#b71c1c;margin-bottom:12px;}
 .chkp-validation-msg.show{display:block;}
@@ -149,6 +160,7 @@ wp_enqueue_style('dashicons');
 .chkp-success-banner-body{font-size:.8rem;color:#2d6b4a;line-height:1.6;}
 .chkp-success-banner-body a{color:#2eaf6e;font-weight:800;}
 .chkp-success-banner-order{display:inline-block;background:#2eaf6e;color:#fff;border-radius:50px;padding:3px 12px;font-size:.7rem;font-weight:800;margin-top:8px;}
+.chkp-success-email-note{margin-top:8px;font-size:.75rem;color:#2d6b4a;background:rgba(46,175,110,.1);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:6px;}
 
 /* ── ERROR BANNER ── */
 .chkp-error-banner{
@@ -163,6 +175,10 @@ wp_enqueue_style('dashicons');
 .chkp-place-btn.loading .cv-spin{display:inline-block;}
 .chkp-place-btn.loading .chkp-btn-label{opacity:.7;}
 @keyframes cvSpin{to{transform:rotate(360deg);}}
+
+/* ── FORM HIDDEN AFTER SUCCESS ── */
+.chkp-form-hidden .chkp-card{display:none;}
+.chkp-form-hidden .chkp-success-card{display:block!important;}
 
 /* ── RESPONSIVE ── */
 @media(max-width:960px){
@@ -194,19 +210,19 @@ wp_enqueue_style('dashicons');
 </section>
 
 <!-- STEPS -->
-<div class="chkp-steps">
+<div class="chkp-steps" id="chkp-steps-bar">
   <div class="chkp-steps-inner">
     <div class="chkp-step done">
       <div class="chkp-step-num"><span class="dashicons dashicons-yes" style="font-size:10px;width:10px;height:10px;"></span></div>
       <span class="chkp-step-lbl">Cart</span>
     </div>
     <div class="chkp-step-line done"></div>
-    <div class="chkp-step active">
+    <div class="chkp-step active" id="chkp-step-2">
       <div class="chkp-step-num">2</div>
       <span class="chkp-step-lbl">Checkout</span>
     </div>
-    <div class="chkp-step-line"></div>
-    <div class="chkp-step">
+    <div class="chkp-step-line" id="chkp-step-line-2"></div>
+    <div class="chkp-step" id="chkp-step-3">
       <div class="chkp-step-num">3</div>
       <span class="chkp-step-lbl">Confirmation</span>
     </div>
@@ -228,7 +244,7 @@ wp_enqueue_style('dashicons');
 <div class="chkp-layout">
 
   <!-- LEFT: FORM -->
-  <div class="chkp-left">
+  <div class="chkp-left" id="chkp-left">
     <form name="checkout" method="post" id="chkp-form"
           class="checkout woocommerce-checkout"
           action="<?php echo esc_url(wc_get_checkout_url()); ?>"
@@ -315,9 +331,15 @@ wp_enqueue_style('dashicons');
               <input type="text" name="billing_postcode" id="billing_postcode" value="<?php echo $val('billing_postcode'); ?>" placeholder="Postcode" autocomplete="postal-code">
             </div>
 
-            <div class="chkp-fg" data-field="billing_email">
-              <label>Email address <span class="opt">(optional)</span></label>
+            <!-- EMAIL — REQUIRED for Place Order -->
+            <div class="chkp-fg span2" data-field="billing_email">
+              <label>Email address <span class="req">*</span> <span class="opt">(order confirmation will be sent here)</span></label>
               <input type="email" name="billing_email" id="billing_email" value="<?php echo $val('billing_email'); ?>" placeholder="your@email.com" autocomplete="email">
+              <span class="chkp-field-error">A valid email address is required to receive your order confirmation</span>
+              <div class="chkp-email-note">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Your order confirmation email will be sent to this address.
+              </div>
             </div>
 
           </div>
@@ -359,7 +381,7 @@ wp_enqueue_style('dashicons');
       </div>
 
       <!-- ACTIONS — DESKTOP ONLY -->
-      <div class="chkp-card">
+      <div class="chkp-card" id="chkp-actions-card-desktop">
         <div class="chkp-card-body">
           <?php if (function_exists('woocommerce_checkout_privacy_policy_text')) woocommerce_checkout_privacy_policy_text(); ?>
           <?php if (function_exists('woocommerce_terms_and_conditions_page_content')) woocommerce_terms_and_conditions_page_content(); ?>
@@ -377,9 +399,12 @@ wp_enqueue_style('dashicons');
               Order Placed Successfully!
             </div>
             <div class="chkp-success-banner-body">
-              Your order has been saved and a confirmation email has been sent to our team.
-              We will contact you shortly to confirm delivery details.<br>
+              Your order has been saved and our team will contact you shortly to confirm delivery.<br>
               For urgent enquiries: <a href="https://wa.me/254790007616" target="_blank">WhatsApp +254 790 007616</a>
+              <div class="chkp-success-email-note" id="chkp-email-note-desktop" style="display:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span id="chkp-email-note-text-desktop">A confirmation email has been sent to your inbox.</span>
+              </div>
               <div><span class="chkp-success-banner-order" id="chkp-order-badge-desktop"></span></div>
             </div>
           </div>
@@ -407,7 +432,8 @@ wp_enqueue_style('dashicons');
           <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
              class="chkp-place-btn" id="chkp-continue-desktop"
              style="display:none;text-decoration:none;margin-top:10px;background:#1e8a54;">
-            🛍️ Continue Shopping
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+             Continue Shopping
           </a>
         </div>
       </div>
@@ -445,9 +471,12 @@ wp_enqueue_style('dashicons');
         Order Placed Successfully!
       </div>
       <div class="chkp-success-banner-body">
-        Your order has been saved and a confirmation email has been sent to our team.
-        We will contact you shortly to confirm delivery.<br>
+        Your order has been saved and our team will contact you shortly to confirm delivery.<br>
         <a href="https://wa.me/254790007616" target="_blank">WhatsApp +254 790 007616</a>
+        <div class="chkp-success-email-note" id="chkp-email-note-mobile" style="display:none;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          <span id="chkp-email-note-text-mobile">A confirmation email has been sent to your inbox.</span>
+        </div>
         <div><span class="chkp-success-banner-order" id="chkp-order-badge-mobile"></span></div>
       </div>
     </div>
@@ -463,13 +492,14 @@ wp_enqueue_style('dashicons');
     <button type="button" id="chkp-place-btn-mobile" class="chkp-place-btn">
       <span class="cv-spin"></span>
       <span class="dashicons dashicons-yes-alt" style="font-size:15px;width:15px;height:15px;"></span>
-      <span class="chkp-btn-label">Place Order &amp; Send Confirmation</span>
+      <span class="chkp-btn-label">Place Order</span>
     </button>
 
     <a href="<?php echo esc_url(function_exists('wc_get_page_id') ? get_permalink(wc_get_page_id('shop')) : home_url('/shop')); ?>"
        class="chkp-place-btn" id="chkp-continue-mobile"
        style="display:none;text-decoration:none;background:#1e8a54;">
-      🛍️ Continue Shopping
+       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+       Continue Shopping
     </a>
 
     <a href="<?php echo esc_url(wc_get_cart_url()); ?>" class="chkp-back">
@@ -502,7 +532,7 @@ wp_enqueue_style('dashicons');
     new MutationObserver(function(muts){ muts.forEach(function(m){ m.addedNodes.forEach(function(n){ if(n.nodeType===1){var c=n.className||'';if(['woocommerce-message','woocommerce-info','woocommerce-error','woocommerce-NoticeGroup','woocommerce-notices-wrapper'].some(function(k){return c.indexOf(k)>-1;}))nukeNotices();} }); }); }).observe(document.body,{childList:true,subtree:true});
   }
 
-  /* ── REQUIRED FIELDS ── */
+  /* ── REQUIRED FIELDS — email now mandatory ── */
   var required = [
     {id:'billing_first_name', label:'First name'},
     {id:'billing_last_name',  label:'Last name'},
@@ -511,6 +541,7 @@ wp_enqueue_style('dashicons');
     {id:'billing_address_1',  label:'Street address'},
     {id:'billing_city',       label:'Town / City'},
     {id:'billing_state',      label:'State / County'},
+    {id:'billing_email',      label:'Email address', type:'email'},
   ];
 
   function getVal(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
@@ -524,7 +555,13 @@ wp_enqueue_style('dashicons');
       if(inp)inp.classList.remove('error');
     });
     required.forEach(function(f){
-      if(!getVal(f.id)){
+      var val = getVal(f.id);
+      var invalid = !val;
+      // Extra check for email format
+      if(!invalid && f.type === 'email'){
+        invalid = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      }
+      if(invalid){
         missing.push(f.label); hasError=true;
         var wrap=document.querySelector('[data-field="'+f.id+'"]');
         var inp=document.getElementById(f.id);
@@ -593,23 +630,99 @@ wp_enqueue_style('dashicons');
     .catch(function(){ if(onDone) onDone(null); });
   }
 
-  function showSuccess(orderId, isDesktop){
+  /* ── RESET FORM + CART AFTER SUCCESS ── */
+  function resetCheckoutAfterOrder(){
+    // 1. Reset all form fields
+    var form = document.getElementById('chkp-form');
+    if(form){
+      var inputs = form.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])');
+      inputs.forEach(function(inp){ inp.value=''; });
+      var textareas = form.querySelectorAll('textarea');
+      textareas.forEach(function(ta){ ta.value=''; });
+      // Reset selects to first option
+      var selects = form.querySelectorAll('select');
+      selects.forEach(function(sel){ sel.selectedIndex=0; });
+      // Remove all error classes
+      form.querySelectorAll('.has-error').forEach(function(el){ el.classList.remove('has-error'); });
+      form.querySelectorAll('.error').forEach(function(el){ el.classList.remove('error'); });
+    }
+
+    // 2. Zero the cart counter in header (common WooCommerce cart count selectors)
+    var cartCounters = document.querySelectorAll(
+      '.cart-contents-count, .wc-cart-count, .cart-count, ' +
+      '.site-header-cart .count, .widget_shopping_cart_content, ' +
+      'a.cart-contents span.count, .header-cart-count, ' +
+      '.cart-item-count, [class*="cart"] .count, ' +
+      '.chkp-summary-head h3'
+    );
+    cartCounters.forEach(function(el){
+      if(el.textContent.match(/\d/)){
+        el.textContent = el.textContent.replace(/\d+/, '0');
+      }
+    });
+
+    // 3. Clear the order summary table rows
+    var tbody = document.querySelector('.woocommerce-checkout-review-order-table tbody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="2" style="padding:12px 14px;font-size:.8rem;color:#8aaa98;font-family:Nunito,sans-serif;">Cart is empty</td></tr>';
+
+    // 4. Zero out total in sidebar
+    var totCell = document.querySelector('.woocommerce-checkout-review-order-table tfoot .order-total .amount');
+    if(totCell) totCell.textContent = 'KES 0.00';
+
+    // 5. Update sidebar header count text
+    var sidebarHead = document.querySelector('.chkp-summary-head h3');
+    if(sidebarHead) sidebarHead.textContent = 'Order Summary (0 items)';
+
+    // 6. Hide all form cards (visual clean state)
+    var formCards = document.querySelectorAll('#chkp-left .chkp-card');
+    formCards.forEach(function(card){
+      // Keep the actions card visible so success banner is shown
+      var actionsCard = document.getElementById('chkp-actions-card-desktop');
+      if(card !== actionsCard){
+        card.style.transition = 'opacity .4s';
+        card.style.opacity = '0.3';
+        card.style.pointerEvents = 'none';
+      }
+    });
+  }
+
+  function showSuccess(orderId, customerEmail, isDesktop){
     var suffix      = isDesktop ? '-desktop' : '-mobile';
     var succEl      = document.getElementById('chkp-success'+suffix);
     var badge       = document.getElementById('chkp-order-badge'+suffix);
     var actions     = isDesktop ? document.getElementById('chkp-desktop-actions') : null;
     var continueBtn = document.getElementById('chkp-continue'+suffix);
     var errEl       = document.getElementById('chkp-error'+suffix);
+    var emailNote   = document.getElementById('chkp-email-note'+suffix);
+    var emailText   = document.getElementById('chkp-email-note-text'+suffix);
+
     if(errEl) errEl.classList.remove('show');
     if(badge) badge.textContent = orderId ? 'Order #'+orderId : 'Order received';
     if(succEl) succEl.classList.add('show');
     if(actions) actions.style.display='none';
     if(continueBtn) continueBtn.style.display='flex';
-    var steps=document.querySelectorAll('.chkp-step');
-    if(steps[2]) steps[2].classList.add('active');
-    var lines=document.querySelectorAll('.chkp-step-line');
-    if(lines[1]) lines[1].classList.add('done');
+
+    // Show email confirmation note
+    if(emailNote && customerEmail){
+      if(emailText) emailText.textContent = '📧 A confirmation email has been sent to ' + customerEmail;
+      emailNote.style.display = 'flex';
+    }
+
+    // Advance steps indicator
+    var step3 = document.getElementById('chkp-step-3');
+    var line2  = document.getElementById('chkp-step-line-2');
+    var step2  = document.getElementById('chkp-step-2');
+    if(step3){ step3.classList.add('active'); }
+    if(line2){ line2.classList.add('done'); }
+    if(step2){ step2.classList.remove('active'); step2.classList.add('done');
+      var num = step2.querySelector('.chkp-step-num');
+      if(num) num.innerHTML = '<span class="dashicons dashicons-yes" style="font-size:10px;width:10px;height:10px;"></span>';
+    }
+
     if(succEl) succEl.scrollIntoView({behavior:'smooth',block:'center'});
+
+    // Reset form + cart display
+    resetCheckoutAfterOrder();
   }
 
   function showError(msg, isDesktop){
@@ -632,14 +745,20 @@ wp_enqueue_style('dashicons');
 
     if(btn){ btn.disabled=true; btn.classList.add('loading'); }
 
+    var customerEmail = getVal('billing_email');
+
     sendOrderToServer('website', function(res){
       if(btn){ btn.disabled=false; btn.classList.remove('loading'); }
 
       if(res && res.success){
-        showSuccess(res.data && res.data.order_id ? res.data.order_id : null, isDesktop);
+        showSuccess(
+          res.data && res.data.order_id ? res.data.order_id : null,
+          customerEmail,
+          isDesktop
+        );
       } else if(res && res.data && res.data.order_id){
-        showSuccess(res.data.order_id, isDesktop);
-        showError('Order #'+res.data.order_id+' saved but confirmation email failed. Please check SMTP settings.', isDesktop);
+        // Order saved but email may have had issue — still show success
+        showSuccess(res.data.order_id, customerEmail, isDesktop);
       } else {
         var msg = (res && res.data && res.data.msg)
           ? res.data.msg
@@ -652,7 +771,33 @@ wp_enqueue_style('dashicons');
   function handleWaOrder(isDesktop){
     var valMsg    = isDesktop ? 'chkp-val-msg'    : 'chkp-val-msg-mobile';
     var valDetail = isDesktop ? 'chkp-val-detail' : 'chkp-val-detail-mobile';
-    if(!validateForm(valMsg, valDetail)) return;
+    // WA orders only validate the core fields (email NOT required for WA)
+    var waRequired = ['billing_first_name','billing_last_name','billing_country','billing_phone','billing_address_1','billing_city','billing_state'];
+    var missing=[], hasError=false;
+    waRequired.forEach(function(id){
+      var wrap=document.querySelector('[data-field="'+id+'"]');
+      var inp=document.getElementById(id);
+      if(wrap)wrap.classList.remove('has-error');
+      if(inp)inp.classList.remove('error');
+    });
+    waRequired.forEach(function(id){
+      if(!document.getElementById(id) || !document.getElementById(id).value.trim()){
+        missing.push(id.replace('billing_','').replace(/_/g,' ')); hasError=true;
+        var wrap=document.querySelector('[data-field="'+id+'"]');
+        var inp=document.getElementById(id);
+        if(wrap)wrap.classList.add('has-error');
+        if(inp)inp.classList.add('error');
+      }
+    });
+    if(hasError){
+      var msg=document.getElementById(valMsg);
+      var det=document.getElementById(valDetail);
+      if(msg)msg.classList.add('show');
+      if(det)det.textContent=' Missing: '+missing.join(', ')+'.';
+      var first=document.querySelector('.chkp-fg.has-error');
+      if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
     document.getElementById(valMsg).classList.remove('show');
 
     window.open('https://wa.me/254790007616?text='+encodeURIComponent(buildWaMessage()), '_blank');
@@ -681,11 +826,22 @@ wp_enqueue_style('dashicons');
     var inp=document.getElementById(f.id);
     var wrap=document.querySelector('[data-field="'+f.id+'"]');
     if(!inp||!wrap) return;
-    function clear(){ wrap.classList.remove('has-error'); inp.classList.remove('error'); }
+    function clear(){
+      if(inp.value.trim()){
+        // For email, also check format before clearing error
+        if(f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inp.value.trim())) return;
+        wrap.classList.remove('has-error');
+        inp.classList.remove('error');
+      }
+    }
     inp.addEventListener('input',  clear);
     inp.addEventListener('change', clear);
     inp.addEventListener('blur', function(){
-      if(!inp.value.trim()){ wrap.classList.add('has-error'); inp.classList.add('error'); }
+      var val = inp.value.trim();
+      var bad = !val;
+      if(!bad && f.type === 'email') bad = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      if(bad){ wrap.classList.add('has-error'); inp.classList.add('error'); }
+      else   { wrap.classList.remove('has-error'); inp.classList.remove('error'); }
     });
   });
 

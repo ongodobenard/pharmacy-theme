@@ -2,6 +2,13 @@
 /**
  * Carevee Pharmacy — functions.php
  * Updated: April 2026
+ *
+ * CHANGES:
+ * - Customer confirmation email sent on Place Order
+ * - Email field mandatory for Place Order button
+ * - WooCommerce admin menu badge shows new/pending order count (red circle)
+ * - Cart + checkout form reset after successful Place Order
+ * - WhatsApp quick-order (home/shop/product) saves to WooCommerce AND emails sales
  */
 
 // Boost local performance for XAMPP development
@@ -476,7 +483,8 @@ add_action('wp_ajax_nopriv_carevee_submit_prescription', 'carevee_submit_prescri
 
 // ════════════════════════════════════════════════════════════════════════════
 // ─── SHARED ORDER HELPER ─────────────────────────────────────────────────
-// Builds and sends the HTML notification email + creates the WC order.
+// Builds + sends HTML notification email to SALES + customer confirmation.
+// Creates the WooCommerce order.
 // Used by BOTH carevee_wa_order_handler AND carevee_send_order_email_handler.
 // ════════════════════════════════════════════════════════════════════════════
 function carevee_build_and_send_order( $args ) {
@@ -549,7 +557,7 @@ function carevee_build_and_send_order( $args ) {
         }
     }
 
-    // ── BUILD EMAIL ──
+    // ── SHARED EMAIL BUILDING ──
     $store_name   = get_bloginfo('name');
     $notify_email = function_exists('medicare_email') ? medicare_email() : 'sales@careveekenya.co.ke';
     $order_label  = $order_id ? '#' . $order_id : 'N/A';
@@ -583,7 +591,8 @@ function carevee_build_and_send_order( $args ) {
 
     $wa_phone = preg_replace('/[^0-9]/', '', $phone);
 
-    $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;">
+    // ── SALES NOTIFICATION EMAIL HTML ──
+    $html_sales = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf5;padding:30px 0;">
       <tr><td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;max-width:600px;width:100%;">
@@ -638,22 +647,159 @@ function carevee_build_and_send_order( $args ) {
     </table>
     </body></html>';
 
-    $subject = '🛒 New Order ' . $order_label . ' — ' . trim($fname . ' ' . $lname) . ' | ' . $store_name;
-    $headers = ['Content-Type: text/html; charset=UTF-8'];
+    $subject_sales = '🛒 New Order ' . $order_label . ' — ' . trim($fname . ' ' . $lname) . ' | ' . $store_name;
+    $headers_sales = ['Content-Type: text/html; charset=UTF-8'];
     if ( is_email($email) ) {
-        $headers[] = 'Reply-To: ' . trim($fname . ' ' . $lname) . ' <' . $email . '>';
+        $headers_sales[] = 'Reply-To: ' . trim($fname . ' ' . $lname) . ' <' . $email . '>';
     }
 
-    $sent = wp_mail($notify_email, $subject, $html, $headers);
+    $sent_sales = wp_mail($notify_email, $subject_sales, $html_sales, $headers_sales);
+
+    // ── CUSTOMER CONFIRMATION EMAIL ──
+    // Only sent if customer provided a valid email AND order is from Place Order (not WA quick-order)
+    $sent_customer = false;
+    if ( is_email($email) && $via !== 'whatsapp' ) {
+        $sent_customer = carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $order_id, $order_label, $cart_lines, $total_fmt, $notes, $payment, $store_name );
+    }
 
     return [
-        'order_id'    => $order_id,
-        'order_error' => $order_error,
-        'email_sent'  => $sent,
+        'order_id'          => $order_id,
+        'order_error'       => $order_error,
+        'email_sent'        => $sent_sales,
+        'customer_email_sent' => $sent_customer,
     ];
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ─── CUSTOMER CONFIRMATION EMAIL ─────────────────────────────────────────
+// Beautiful HTML email sent to the customer after a successful Place Order.
+// ════════════════════════════════════════════════════════════════════════════
+function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $order_id, $order_label, $cart_lines, $total_fmt, $notes, $payment, $store_name ) {
+
+    $items_html = '';
+    foreach ( $cart_lines as $item ) {
+        $items_html .= '<tr>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;font-family:Arial,sans-serif;font-size:14px;color:#1a2e25;">' . esc_html($item['name']) . '</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:center;font-family:Arial,sans-serif;font-size:14px;color:#4a6358;">' . intval($item['qty']) . '</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e8f8f0;text-align:right;font-family:Arial,sans-serif;font-size:14px;color:#2eaf6e;font-weight:700;">KES ' . number_format($item['sub'], 2) . '</td>
+        </tr>';
+    }
+
+    $wa_phone = preg_replace('/[^0-9]/', '', $phone ?: '254790007616');
+
+    $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf5;padding:30px 0;">
+      <tr><td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;max-width:600px;width:100%;">
+
+          <!-- HEADER -->
+          <tr><td style="background:linear-gradient(135deg,#1e8a54,#2eaf6e);padding:30px 32px;text-align:center;">
+            <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px;">' . esc_html($store_name) . '</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:4px;font-style:italic;">Trusted Care, Delivered Daily</div>
+          </td></tr>
+
+          <!-- BIG TICK -->
+          <tr><td style="padding:28px 32px 10px;text-align:center;">
+            <div style="width:60px;height:60px;background:#e8f8f0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2eaf6e" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div style="font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#1a2e25;margin-bottom:6px;">Order Confirmed!</div>
+            <div style="font-family:Arial,sans-serif;font-size:14px;color:#4a6358;line-height:1.6;">
+              Thank you, <strong>' . esc_html($fname) . '</strong>! Your order has been received and our team will contact you shortly to confirm delivery.
+            </div>
+            <div style="display:inline-block;background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:50px;padding:7px 20px;font-size:13px;font-weight:800;color:#1e8a54;margin-top:14px;">
+              Order ' . esc_html($order_label) . '
+            </div>
+          </td></tr>
+
+          <!-- ORDER ITEMS -->
+          <tr><td style="padding:20px 32px 0;">
+            <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:12px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">🛒 Your Order</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e8f8f0;border-radius:8px;overflow:hidden;">
+              <thead><tr style="background:#f8fffe;">
+                <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Product</th>
+                <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Qty</th>
+                <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:800;color:#8aaa98;text-transform:uppercase;">Total</th>
+              </tr></thead>
+              <tbody>' . $items_html . '</tbody>
+              <tfoot><tr style="background:#f0faf5;">
+                <td colspan="2" style="padding:12px 14px;font-size:15px;font-weight:900;color:#1a2e25;">ORDER TOTAL</td>
+                <td style="padding:12px 14px;text-align:right;font-size:17px;font-weight:900;color:#2eaf6e;">' . $total_fmt . '</td>
+              </tr></tfoot>
+            </table>
+          </td></tr>
+
+          ' . ($notes ? '<tr><td style="padding:16px 32px 0;"><div style="background:#fff8e8;border:1.5px solid #f0d080;border-radius:8px;padding:12px 16px;"><div style="font-size:12px;font-weight:800;color:#b8860b;margin-bottom:5px;text-transform:uppercase;">📝 Your Notes</div><div style="font-size:13px;color:#4a6358;line-height:1.6;">' . esc_html($notes) . '</div></div></td></tr>' : '') . '
+
+          <!-- PAYMENT INFO -->
+          <tr><td style="padding:16px 32px 0;">
+            <div style="background:#f0faf5;border:1.5px solid #b8ecd4;border-radius:8px;padding:14px 16px;">
+              <div style="font-size:12px;font-weight:800;color:#2eaf6e;text-transform:uppercase;margin-bottom:8px;">💳 Payment — ' . esc_html(ucwords(str_replace(['_','-'],' ',$payment))) . '</div>
+              <div style="font-size:12px;color:#4a6358;line-height:1.9;">
+                • <strong>Nairobi:</strong> Pay Cash or M-Pesa on delivery<br>
+                • <strong>Other Counties:</strong> Full payment before dispatch<br>
+                • <strong>M-Pesa Till:</strong> 5279237 — <strong>CAREVEE STORE</strong><br>
+                • <strong>Total to pay:</strong> <span style="color:#2eaf6e;font-weight:800;">' . $total_fmt . '</span>
+              </div>
+            </div>
+          </td></tr>
+
+          <!-- NEXT STEPS -->
+          <tr><td style="padding:16px 32px 0;">
+            <div style="font-size:15px;font-weight:800;color:#1a2e25;margin-bottom:10px;border-bottom:2px solid #e8f8f0;padding-bottom:8px;">📋 What Happens Next?</div>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="width:32px;vertical-align:top;padding:4px 0;">
+                  <div style="width:22px;height:22px;background:#2eaf6e;border-radius:50%;text-align:center;color:#fff;font-size:11px;font-weight:900;line-height:22px;">1</div>
+                </td>
+                <td style="padding:4px 0 4px 8px;font-size:13px;color:#4a6358;font-family:Arial,sans-serif;line-height:1.5;">Our pharmacist reviews your order and verifies stock availability.</td>
+              </tr>
+              <tr>
+                <td style="width:32px;vertical-align:top;padding:4px 0;">
+                  <div style="width:22px;height:22px;background:#2eaf6e;border-radius:50%;text-align:center;color:#fff;font-size:11px;font-weight:900;line-height:22px;">2</div>
+                </td>
+                <td style="padding:4px 0 4px 8px;font-size:13px;color:#4a6358;font-family:Arial,sans-serif;line-height:1.5;">We call or WhatsApp you on <strong>' . esc_html($phone) . '</strong> to confirm delivery details.</td>
+              </tr>
+              <tr>
+                <td style="width:32px;vertical-align:top;padding:4px 0;">
+                  <div style="width:22px;height:22px;background:#2eaf6e;border-radius:50%;text-align:center;color:#fff;font-size:11px;font-weight:900;line-height:22px;">3</div>
+                </td>
+                <td style="padding:4px 0 4px 8px;font-size:13px;color:#4a6358;font-family:Arial,sans-serif;line-height:1.5;">Your order is dispatched and delivered to your address.</td>
+              </tr>
+            </table>
+          </td></tr>
+
+          <!-- CTA BUTTONS -->
+          <tr><td style="padding:24px 32px;text-align:center;">
+            <a href="https://wa.me/' . esc_attr($wa_phone) . '" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;margin:0 6px 10px;">💬 Chat on WhatsApp</a>
+            <a href="tel:+254790007616" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 24px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;margin:0 6px 10px;">📞 Call Us</a>
+          </td></tr>
+
+          <!-- FOOTER -->
+          <tr><td style="background:#f8fffe;border-top:2px solid #e8f8f0;padding:16px 32px;text-align:center;">
+            <div style="font-size:12px;color:#4a6358;font-weight:700;">' . esc_html($store_name) . ' — Trusted Care, Delivered Daily</div>
+            <div style="font-size:11px;color:#8aaa98;margin-top:4px;">📞 +254 790 007 616 &nbsp;|&nbsp; sales@careveekenya.co.ke</div>
+            <div style="font-size:11px;color:#8aaa98;margin-top:2px;">' . esc_html(home_url('/')) . '</div>
+            <div style="font-size:10px;color:#b0c8bc;margin-top:8px;">This is an automated order confirmation email. Please do not reply directly.</div>
+          </td></tr>
+
+        </table>
+      </td></tr>
+    </table>
+    </body></html>';
+
+    $subject = '✅ Order ' . $order_label . ' Confirmed — ' . $store_name;
+    $headers = [
+        'Content-Type: text/html; charset=UTF-8',
+        'From: ' . $store_name . ' <sales@careveekenya.co.ke>',
+    ];
+
+    return wp_mail($email, $subject, $html, $headers);
+}
+
 // ─── AJAX: WHATSAPP QUICK ORDER ───────────────
+// Called from home/shop/product pages WA buttons.
+// NOW: saves to WooCommerce orders + sends sales email.
 add_action('wp_ajax_carevee_wa_order',        'carevee_wa_order_handler');
 add_action('wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler');
 
@@ -688,6 +834,7 @@ function carevee_wa_order_handler() {
     $price = (float) $product->get_price();
     $sub   = $price * $qty;
 
+    // Build and send — saves WC order + emails sales team
     $result = carevee_build_and_send_order([
         'fname'      => $fname,
         'lname'      => $lname,
@@ -732,12 +879,18 @@ function carevee_send_order_email_handler() {
     $payment  = sanitize_text_field($_POST['payment_method']     ?? 'cod');
     $via      = sanitize_text_field($_POST['order_via']          ?? 'website');
 
+    // ── Server-side validation ──
     if ( empty($fname) || empty($lname) ) {
-        wp_send_json_error(['msg' => 'Please enter your first and last name.']);
+        wp_send_json_error(['msg' => 'Please enter your first and last name.', 'field' => 'name']);
         return;
     }
     if ( empty($phone) ) {
-        wp_send_json_error(['msg' => 'Please enter your phone number.']);
+        wp_send_json_error(['msg' => 'Please enter your phone number.', 'field' => 'billing_phone']);
+        return;
+    }
+    // Email is MANDATORY for Place Order (website checkout)
+    if ( $via !== 'whatsapp' && ( empty($email) || ! is_email($email) ) ) {
+        wp_send_json_error(['msg' => 'A valid email address is required to receive your order confirmation.', 'field' => 'billing_email']);
         return;
     }
 
@@ -783,6 +936,7 @@ function carevee_send_order_email_handler() {
     $sent     = $result['email_sent'];
     $err      = $result['order_error'];
 
+    // ── Clear cart server-side on success ──
     if ( $order_id && function_exists('WC') && WC()->cart ) {
         WC()->cart->empty_cart();
         if ( WC()->session ) {
@@ -793,30 +947,109 @@ function carevee_send_order_email_handler() {
 
     if ( $sent && $order_id ) {
         wp_send_json_success([
-            'msg'        => '✅ Order #' . $order_id . ' placed! We will contact you shortly to confirm.',
-            'order_id'   => $order_id,
-            'email_sent' => true,
+            'msg'                 => '✅ Order #' . $order_id . ' placed! A confirmation email has been sent to ' . esc_html($email) . '. We will contact you shortly.',
+            'order_id'            => $order_id,
+            'email_sent'          => true,
+            'customer_email_sent' => $result['customer_email_sent'],
         ]);
     } elseif ( $order_id && ! $sent ) {
         wp_send_json_error([
-            'msg'        => 'Order #' . $order_id . ' saved but confirmation email failed. Please check SMTP settings.',
-            'order_id'   => $order_id,
-            'email_sent' => false,
+            'msg'      => 'Order #' . $order_id . ' saved but confirmation email failed. Please check SMTP settings.',
+            'order_id' => $order_id,
         ]);
     } elseif ( $sent && ! $order_id ) {
         wp_send_json_error([
-            'msg'        => 'Email sent but WooCommerce order could not be saved. Error: ' . esc_html($err),
-            'order_id'   => 0,
-            'email_sent' => true,
+            'msg'      => 'Email sent but WooCommerce order could not be saved. Error: ' . esc_html($err),
+            'order_id' => 0,
         ]);
     } else {
         wp_send_json_error([
-            'msg'        => '❌ Something went wrong. Please contact us on WhatsApp or call +254 790 007 616.',
-            'order_id'   => 0,
-            'email_sent' => false,
+            'msg'      => '❌ Something went wrong. Please contact us on WhatsApp or call +254 790 007 616.',
+            'order_id' => 0,
         ]);
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ─── WOOCOMMERCE ADMIN ORDER BADGE ───────────────────────────────────────
+// Shows a red bubble with pending/processing order count on the WC menu item
+// and the Orders sub-menu entry in wp-admin.
+// ════════════════════════════════════════════════════════════════════════════
+add_action('admin_menu', 'carevee_wc_order_badge', 999);
+
+function carevee_wc_order_badge() {
+    global $menu, $submenu;
+
+    // Count orders that need attention: pending + processing
+    $pending_count    = 0;
+    $processing_count = 0;
+
+    if ( function_exists('wc_orders_count') ) {
+        // HPOS-compatible (WC 7.1+)
+        $pending_count    = wc_orders_count('pending');
+        $processing_count = wc_orders_count('processing');
+    } elseif ( function_exists('wc_get_order_statuses') ) {
+        // Fallback: count via WP_Query
+        $pending_count    = (int) wp_count_posts('shop_order')->{'wc-pending'};
+        $processing_count = (int) wp_count_posts('shop_order')->{'wc-processing'};
+    }
+
+    $total = $pending_count + $processing_count;
+    if ( $total < 1 ) return;
+
+    $badge = '<span style="
+        display:inline-block;
+        background:#e53935;
+        color:#fff;
+        font-size:9px;
+        font-weight:800;
+        line-height:1;
+        min-width:16px;
+        height:16px;
+        border-radius:50px;
+        text-align:center;
+        padding:3px 4px;
+        margin-left:5px;
+        vertical-align:middle;
+        box-shadow:0 1px 4px rgba(229,57,53,.5);
+        ">' . $total . '</span>';
+
+    // ── Patch top-level WooCommerce menu ──
+    if ( is_array($menu) ) {
+        foreach ( $menu as $k => $item ) {
+            // WooCommerce menu slug is 'woocommerce'
+            if ( isset($item[2]) && $item[2] === 'woocommerce' ) {
+                $menu[$k][0] .= $badge;
+                break;
+            }
+        }
+    }
+
+    // ── Patch the Orders sub-menu item ──
+    $wc_submenus = ['woocommerce', 'edit.php?post_type=shop_order'];
+    foreach ( $wc_submenus as $parent ) {
+        if ( ! isset($submenu[$parent]) ) continue;
+        foreach ( $submenu[$parent] as $k => $sub ) {
+            // Orders page slugs: 'wc-orders' (HPOS) or 'edit.php?post_type=shop_order'
+            if ( isset($sub[2]) && (
+                $sub[2] === 'wc-orders' ||
+                $sub[2] === 'edit.php?post_type=shop_order'
+            )) {
+                $submenu[$parent][$k][0] .= $badge;
+                break;
+            }
+        }
+    }
+}
+
+// ── Inject CSS so the badge looks perfect at every zoom level ──
+add_action('admin_head', function() {
+    if ( ! current_user_can('manage_woocommerce') ) return;
+    echo '<style>
+    #adminmenu .wp-menu-name .carevee-badge,
+    #adminmenu li a .carevee-badge { vertical-align:middle; }
+    </style>' . "\n";
+});
 
 // ─── ADMIN SETTINGS PAGE ──────────────────────
 function medicare_admin_menu() {
