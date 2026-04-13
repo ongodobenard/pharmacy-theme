@@ -4,8 +4,9 @@
  * Updated: April 2026
  *
  * CHANGES:
+ * - Silent AJAX cart reset (WC session + fragment refresh) after successful Place Order
+ * - 2 fields per row grid, fully responsive (single col on mobile)
  * - No emojis — Dashicons only throughout
- * - Cart + form reset IMMEDIATELY after successful Place Order (not on Continue Shopping)
  * - Success message shows customer email confirmation was sent
  * - Cart count in header updated to 0 after successful order
  * - Steps bar advances to Confirmation immediately on success
@@ -80,14 +81,32 @@ wp_enqueue_style( 'dashicons' );
 .chkp-card-head h3{font-family:'Nunito',sans-serif;font-size:.85rem;font-weight:800;color:#1a2e25;margin:0;}
 .chkp-card-body{padding:clamp(10px,2vw,18px);}
 
-/* ── FORM GRID ── */
-.chkp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+/* ════════════════════════════════════════════════
+   FORM GRID — 2 fields per row, responsive
+════════════════════════════════════════════════ */
+.chkp-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px 14px;
+}
+/* Span full width when needed */
 .chkp-grid .span2{grid-column:1/-1;}
-.chkp-fg{display:flex;flex-direction:column;gap:3px;}
-.chkp-fg label{font-family:'Nunito',sans-serif;font-size:.75rem;font-weight:700;color:#4a6358;line-height:1.3;}
+
+.chkp-fg{display:flex;flex-direction:column;gap:4px;}
+.chkp-fg label{font-family:'Nunito',sans-serif;font-size:.76rem;font-weight:700;color:#4a6358;line-height:1.3;}
 .chkp-fg label .req{color:#e53935;}
 .chkp-fg label .opt{color:#8aaa98;font-weight:500;}
-.chkp-fg input,.chkp-fg select,.chkp-fg textarea{width:100%;box-sizing:border-box;padding:8px 11px;border:2px solid #b8ecd4;border-radius:7px;font-family:'Nunito',sans-serif;font-size:.82rem;color:#1a2e25;background:#fff;outline:none;-webkit-appearance:none;appearance:none;transition:border-color .2s,box-shadow .2s;}
+.chkp-fg input,.chkp-fg select,.chkp-fg textarea{
+  width:100%;box-sizing:border-box;
+  padding:9px 12px;
+  border:2px solid #b8ecd4;
+  border-radius:8px;
+  font-family:'Nunito',sans-serif;
+  font-size:.83rem;color:#1a2e25;
+  background:#fff;outline:none;
+  -webkit-appearance:none;appearance:none;
+  transition:border-color .2s,box-shadow .2s;
+}
 .chkp-fg input:focus,.chkp-fg select:focus,.chkp-fg textarea:focus{border-color:#2eaf6e;box-shadow:0 0 0 3px rgba(46,175,110,.1);}
 .chkp-fg input.error,.chkp-fg select.error,.chkp-fg textarea.error{border-color:#e53935!important;box-shadow:0 0 0 3px rgba(229,57,53,.1)!important;}
 .chkp-fg select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238aaa98' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;}
@@ -95,7 +114,7 @@ wp_enqueue_style( 'dashicons' );
 .chkp-fg.has-error .chkp-field-error{display:block;}
 
 /* ── EMAIL NOTE ── */
-.chkp-email-note{font-size:.7rem;color:#2eaf6e;font-family:'Nunito',sans-serif;margin-top:3px;display:flex;align-items:center;gap:4px;}
+.chkp-email-note{font-size:.7rem;color:#2eaf6e;font-family:'Nunito',sans-serif;margin-top:4px;display:flex;align-items:center;gap:4px;}
 
 /* ── VALIDATION BANNER ── */
 .chkp-validation-msg{display:none;background:#fff0f0;border:1.5px solid #e53935;border-left:4px solid #e53935;border-radius:10px;padding:11px 14px;font-family:'Nunito',sans-serif;font-size:.83rem;color:#b71c1c;margin-bottom:12px;}
@@ -180,16 +199,54 @@ wp_enqueue_style( 'dashicons' );
 .chkp-form-faded .chkp-card{opacity:0.3;pointer-events:none;transition:opacity .4s;}
 .chkp-form-faded #chkp-actions-card-desktop{opacity:1;pointer-events:auto;}
 
-/* ── RESPONSIVE ── */
+/* ════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+════════════════════════════════════════════════ */
 @media(max-width:960px){
   .chkp-layout{grid-template-columns:1fr;grid-template-rows:auto auto auto;}
   .chkp-left{order:1;}.chkp-sidebar{order:2;position:static;}
   .chkp-desktop-actions{display:none!important;}
   .chkp-mobile-actions{display:flex!important;flex-direction:column;gap:10px;order:3;background:#fff;border-radius:12px;border:1.5px solid #b8ecd4;box-shadow:0 3px 16px rgba(46,175,110,.07);padding:16px;margin-top:0;}
 }
-@media(max-width:700px){.chkp-wrap{padding:12px 3%;}.chkp-banner{padding:16px 3%;}.chkp-steps{padding:8px 3%;}.chkp-card-body{padding:12px 10px;}.chkp-grid{gap:8px 10px;}}
-@media(max-width:540px){.chkp-wrap{padding:10px 3%;}.chkp-banner{padding:14px 3%;}.chkp-banner h1{font-size:1.1rem;}.chkp-breadcrumb{font-size:.68rem;}.chkp-card-body{padding:10px 8px;}.chkp-grid{grid-template-columns:1fr!important;gap:8px;}.chkp-grid .span2{grid-column:1;}.chkp-step-lbl{display:none!important;}.chkp-step-line{min-width:5px;margin:0 4px;}.chkp-pay-pills{gap:4px;}.chkp-pay-pill{font-size:.62rem;padding:4px 7px;}.chkp-pay-pill .dashicons{display:none;}.chkp-fg input,.chkp-fg select,.chkp-fg textarea{padding:7px 10px;font-size:.8rem;}.chkp-fg label{font-size:.72rem;}.chkp-wa-btn{font-size:.84rem;padding:12px 10px;}.chkp-place-btn{font-size:.82rem;padding:11px 10px;}.chkp-summary-card .woocommerce-checkout-review-order-table th,.chkp-summary-card .woocommerce-checkout-review-order-table td{padding:7px 10px!important;font-size:.74rem!important;}}
-@media(max-width:360px){.chkp-wrap{padding:8px 2%;}.chkp-card-body{padding:8px 6px;}.chkp-fg input,.chkp-fg select{padding:6px 8px;font-size:.76rem;}.chkp-wa-btn{font-size:.78rem;padding:10px 8px;gap:6px;}.chkp-place-btn{font-size:.76rem;padding:10px 8px;}}
+
+/* At 700px keep 2-col grid but reduce gaps */
+@media(max-width:700px){
+  .chkp-wrap{padding:12px 3%;}
+  .chkp-banner{padding:16px 3%;}
+  .chkp-steps{padding:8px 3%;}
+  .chkp-card-body{padding:12px 10px;}
+  .chkp-grid{gap:8px 10px;}
+}
+
+/* Below 540px collapse to single column */
+@media(max-width:540px){
+  .chkp-wrap{padding:10px 3%;}
+  .chkp-banner{padding:14px 3%;}
+  .chkp-banner h1{font-size:1.1rem;}
+  .chkp-breadcrumb{font-size:.68rem;}
+  .chkp-card-body{padding:10px 8px;}
+  /* SINGLE COLUMN on small screens */
+  .chkp-grid{grid-template-columns:1fr!important;gap:8px;}
+  .chkp-grid .span2{grid-column:1;}
+  .chkp-step-lbl{display:none!important;}
+  .chkp-step-line{min-width:5px;margin:0 4px;}
+  .chkp-pay-pills{gap:4px;}
+  .chkp-pay-pill{font-size:.62rem;padding:4px 7px;}
+  .chkp-pay-pill .dashicons{display:none;}
+  .chkp-fg input,.chkp-fg select,.chkp-fg textarea{padding:7px 10px;font-size:.8rem;}
+  .chkp-fg label{font-size:.72rem;}
+  .chkp-wa-btn{font-size:.84rem;padding:12px 10px;}
+  .chkp-place-btn{font-size:.82rem;padding:11px 10px;}
+  .chkp-summary-card .woocommerce-checkout-review-order-table th,.chkp-summary-card .woocommerce-checkout-review-order-table td{padding:7px 10px!important;font-size:.74rem!important;}
+}
+
+@media(max-width:360px){
+  .chkp-wrap{padding:8px 2%;}
+  .chkp-card-body{padding:8px 6px;}
+  .chkp-fg input,.chkp-fg select{padding:6px 8px;font-size:.76rem;}
+  .chkp-wa-btn{font-size:.78rem;padding:10px 8px;gap:6px;}
+  .chkp-place-btn{font-size:.76rem;padding:10px 8px;}
+}
 </style>
 
 <?php if ( function_exists( 'wc_clear_notices' ) ) wc_clear_notices(); ?>
@@ -252,7 +309,7 @@ wp_enqueue_style( 'dashicons' );
 
       <?php do_action( 'woocommerce_checkout_before_customer_details' ); ?>
 
-      <!-- BILLING -->
+      <!-- BILLING — 2 fields per row -->
       <div class="chkp-card" id="chkp-card-billing">
         <div class="chkp-card-head">
           <span class="dashicons dashicons-admin-users"></span>
@@ -261,6 +318,7 @@ wp_enqueue_style( 'dashicons' );
         <div class="chkp-card-body">
           <div class="chkp-grid">
 
+            <!-- Row 1: First name | Last name -->
             <div class="chkp-fg" data-field="billing_first_name">
               <label>First name <span class="req">*</span></label>
               <input type="text" name="billing_first_name" id="billing_first_name" value="<?php echo $val( 'billing_first_name' ); ?>" placeholder="First name" autocomplete="given-name">
@@ -273,11 +331,13 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">Last name is required</span>
             </div>
 
+            <!-- Row 2: Company (full width) -->
             <div class="chkp-fg span2" data-field="billing_company">
               <label>Company <span class="opt">(optional)</span></label>
               <input type="text" name="billing_company" id="billing_company" value="<?php echo $val( 'billing_company' ); ?>" placeholder="Company name" autocomplete="organization">
             </div>
 
+            <!-- Row 3: Country | Phone -->
             <div class="chkp-fg" data-field="billing_country">
               <label>Country / Region <span class="req">*</span></label>
               <select name="billing_country" id="billing_country">
@@ -294,6 +354,7 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">Phone number is required</span>
             </div>
 
+            <!-- Row 4: Street address | Apartment -->
             <div class="chkp-fg" data-field="billing_address_1">
               <label>Street address <span class="req">*</span></label>
               <input type="text" name="billing_address_1" id="billing_address_1" value="<?php echo $val( 'billing_address_1' ); ?>" placeholder="House number and street" autocomplete="address-line1">
@@ -305,6 +366,7 @@ wp_enqueue_style( 'dashicons' );
               <input type="text" name="billing_address_2" id="billing_address_2" value="<?php echo $val( 'billing_address_2' ); ?>" placeholder="Apartment, suite, unit, etc." autocomplete="address-line2">
             </div>
 
+            <!-- Row 5: City | State -->
             <div class="chkp-fg" data-field="billing_city">
               <label>Town / City <span class="req">*</span></label>
               <input type="text" name="billing_city" id="billing_city" value="<?php echo $val( 'billing_city' ); ?>" placeholder="City" autocomplete="address-level2">
@@ -326,12 +388,16 @@ wp_enqueue_style( 'dashicons' );
               <span class="chkp-field-error">State / County is required</span>
             </div>
 
+            <!-- Row 6: Postcode (half) -->
             <div class="chkp-fg" data-field="billing_postcode">
               <label>Postcode / ZIP <span class="opt">(optional)</span></label>
               <input type="text" name="billing_postcode" id="billing_postcode" value="<?php echo $val( 'billing_postcode' ); ?>" placeholder="Postcode" autocomplete="postal-code">
             </div>
 
-            <!-- EMAIL — REQUIRED for Place Order -->
+            <!-- Spacer for postcode row — keeps grid aligned -->
+            <div class="chkp-fg" style="visibility:hidden;" aria-hidden="true"></div>
+
+            <!-- Row 7: Email (full width) -->
             <div class="chkp-fg span2" data-field="billing_email">
               <label>Email address <span class="req">*</span> <span class="opt">(order confirmation will be sent here)</span></label>
               <input type="email" name="billing_email" id="billing_email" value="<?php echo $val( 'billing_email' ); ?>" placeholder="your@email.com" autocomplete="email">
@@ -342,7 +408,7 @@ wp_enqueue_style( 'dashicons' );
               </div>
             </div>
 
-          </div>
+          </div><!-- /.chkp-grid -->
         </div>
       </div>
 
@@ -518,8 +584,7 @@ wp_enqueue_style( 'dashicons' );
 
   var AJAX_URL    = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
   var ORDER_NONCE = '<?php echo esc_js( $order_nonce ); ?>';
-  var SHOP_URL    = '<?php echo esc_js( function_exists( "wc_get_page_id" ) ? get_permalink( wc_get_page_id( "shop" ) ) : home_url( "/shop" ) ); ?>';
-  var SENT_URL    = '<?php echo esc_js( home_url( "/?carevee_order_sent=1" ) ); ?>';
+  var WC_AJAX_URL = '<?php echo esc_js( home_url( "/?wc-ajax=%%endpoint%%" ) ); ?>';
 
   /* ── NUKE NOTICES ── */
   function nukeNotices() {
@@ -629,11 +694,15 @@ wp_enqueue_style( 'dashicons' );
     .catch(function(){ if(onDone) onDone(null); });
   }
 
-  /* ════════════════════════════════════════════════════
-     RESET FORM + CART IMMEDIATELY AFTER SUCCESSFUL ORDER
+  /* ════════════════════════════════════════════════════════
+     SILENT CART RESET via WooCommerce cart fragments AJAX
      Called right after server responds with success.
-  ════════════════════════════════════════════════════ */
-  function resetCheckoutAfterOrder(){
+     1. Resets all form fields
+     2. Triggers WC cart fragment refresh (updates header badge silently)
+     3. Zeroes sidebar order summary UI
+     4. Fades form cards
+  ════════════════════════════════════════════════════════ */
+  function silentCartReset(){
 
     // 1. Reset all visible form fields
     var form = document.getElementById('chkp-form');
@@ -645,22 +714,43 @@ wp_enqueue_style( 'dashicons' );
       form.querySelectorAll('.error').forEach(function(el){ el.classList.remove('error'); });
     }
 
-    // 2. Zero the cart counter in header (covers common WooCommerce cart count selectors)
-    var cartSelectors = [
-      '.cart-contents-count',
-      '.wc-cart-count',
-      '.cart-count',
-      '.site-header-cart .count',
-      'a.cart-contents span.count',
-      '.header-cart-count',
-      '.cart-item-count',
-      '[class*="cart-"] .count',
-      '.count'
-    ];
-    document.querySelectorAll( cartSelectors.join(',') ).forEach(function(el){
-      if( /\d/.test(el.textContent) ){
-        el.textContent = el.textContent.replace(/\d+/, '0');
+    // 2. Trigger WooCommerce cart fragment refresh — silently updates header cart count
+    //    WC fires 'wc_fragment_refresh' on document which updates all [data-cart-fragment] elements
+    var wcFragmentUrl = WC_AJAX_URL.replace('%%endpoint%%', 'get_refreshed_fragments');
+    fetch(wcFragmentUrl, {
+      method:'POST', credentials:'same-origin',
+      headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded'},
+      body:'security=&time='+ Date.now()
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data && data.fragments){
+        // Apply fragments to the DOM (WC's standard approach)
+        Object.keys(data.fragments).forEach(function(selector){
+          try{
+            var els = document.querySelectorAll(selector);
+            els.forEach(function(el){
+              var tmp = document.createElement('div');
+              tmp.innerHTML = data.fragments[selector];
+              if(tmp.firstChild) el.parentNode.replaceChild(tmp.firstChild, el);
+            });
+          }catch(e){}
+        });
       }
+    })
+    .catch(function(){})
+    .finally(function(){
+      // Fallback: manually zero all cart count elements
+      var cartSelectors = [
+        '.cart-contents-count','.wc-cart-count','.cart-count',
+        '.site-header-cart .count','a.cart-contents span.count',
+        '.header-cart-count','.cart-item-count','[class*="cart-"] .count'
+      ];
+      document.querySelectorAll(cartSelectors.join(',')).forEach(function(el){
+        if(/\d/.test(el.textContent)){
+          el.textContent = el.textContent.replace(/\d+/, '0');
+        }
+      });
     });
 
     // 3. Clear the order summary table rows
@@ -675,9 +765,8 @@ wp_enqueue_style( 'dashicons' );
     var sidebarHead = document.getElementById('chkp-summary-title');
     if(sidebarHead) sidebarHead.textContent = 'Order Summary (0 items)';
 
-    // 6. Fade form cards (except the actions card which shows success)
-    var cardsToFade = ['chkp-card-billing','chkp-card-payment','chkp-card-notes'];
-    cardsToFade.forEach(function(id){
+    // 6. Fade form cards (except actions card which shows success)
+    ['chkp-card-billing','chkp-card-payment','chkp-card-notes'].forEach(function(id){
       var card = document.getElementById(id);
       if(card){
         card.style.transition = 'opacity .4s';
@@ -724,8 +813,8 @@ wp_enqueue_style( 'dashicons' );
 
     if(succEl) succEl.scrollIntoView({behavior:'smooth',block:'center'});
 
-    // IMMEDIATELY reset form + cart — no need to wait for Continue Shopping
-    resetCheckoutAfterOrder();
+    // Silent cart + form reset — no page reload
+    silentCartReset();
   }
 
   function showError(msg, isDesktop){
@@ -774,7 +863,6 @@ wp_enqueue_style( 'dashicons' );
   function handleWaOrder(isDesktop){
     var valMsg    = isDesktop ? 'chkp-val-msg'    : 'chkp-val-msg-mobile';
     var valDetail = isDesktop ? 'chkp-val-detail' : 'chkp-val-detail-mobile';
-    // WA checkout orders validate core fields only (email NOT required for WA)
     var waRequired = ['billing_first_name','billing_last_name','billing_country','billing_phone','billing_address_1','billing_city','billing_state'];
     var missing=[], hasError=false;
     waRequired.forEach(function(id){
@@ -805,7 +893,6 @@ wp_enqueue_style( 'dashicons' );
 
     window.open('https://wa.me/254790007616?text='+encodeURIComponent(buildWaMessage()), '_blank');
     sendOrderToServer('whatsapp', function(){});
-    setTimeout(function(){ window.location.href = SENT_URL; }, 800);
   }
 
   /* ── WIRE UP BUTTONS ── */

@@ -5,10 +5,11 @@
  *
  * CHANGES:
  * - No emojis anywhere — Dashicons only
- * - WC admin badge: aligned correctly, no sub-menu duplicate, clears when Orders page is open
+ * - WC admin badge: shown only when Orders page is NOT open; hidden when admin
+ *   navigates to Orders (page load OR menu link click via JS)
  * - WhatsApp buttons on home/shop/product pages save order to WooCommerce immediately on click
  * - Customer name for WA quick-orders set to "WhatsApp Client"
- * - Cart + form reset immediately after successful Place Order (server-side cart clear)
+ * - Cart + form reset silently via WC fragments after successful Place Order (server-side cart clear)
  */
 
 if ( defined('WP_DEBUG') && WP_DEBUG ) {
@@ -164,7 +165,7 @@ add_action( 'pre_get_posts', function ( $query ) {
     $query->set( 'post_type', 'product' );
 } );
 
-// ─── CART CLEAR ON REDIRECT ───────────────────
+// ─── CART CLEAR ON REDIRECT (WA orders) ───────
 add_action( 'template_redirect', function () {
     if ( ! isset( $_GET['carevee_order_sent'] ) || $_GET['carevee_order_sent'] !== '1' ) return;
     if ( ! function_exists( 'WC' ) || ! WC()->cart ) return;
@@ -293,8 +294,6 @@ add_action( 'wp_ajax_medicare_filter_products',        'medicare_filter_products
 add_action( 'wp_ajax_nopriv_medicare_filter_products', 'medicare_filter_products' );
 
 // ─── GLOBAL JS FOR WA ORDER BUTTON ────────────
-// Handles .carevee-wa-order-btn on ALL pages: home, shop, product, categories
-// Immediately saves order to WooCommerce on button click, customer = "WhatsApp Client"
 add_action( 'wp_footer', function () {
     ?>
     <script>
@@ -315,7 +314,6 @@ add_action( 'wp_footer', function () {
 
             $btn.prop('disabled', true);
 
-            // Save order to WooCommerce immediately, then open WhatsApp
             $.ajax({
                 url  : (typeof medicareData !== 'undefined' ? medicareData.ajaxUrl : '/wp-admin/admin-ajax.php'),
                 type : 'POST',
@@ -484,9 +482,6 @@ add_action( 'wp_ajax_nopriv_carevee_submit_prescription', 'carevee_submit_prescr
 
 // ════════════════════════════════════════════════════════════════════════════
 // ─── SHARED ORDER HELPER ─────────────────────────────────────────────────
-// Builds + sends HTML notification email to SALES + customer confirmation.
-// Creates the WooCommerce order.
-// Used by BOTH carevee_wa_order_handler AND carevee_send_order_email_handler.
 // ════════════════════════════════════════════════════════════════════════════
 function carevee_build_and_send_order( $args ) {
 
@@ -657,7 +652,6 @@ function carevee_build_and_send_order( $args ) {
     $sent_sales = wp_mail( $notify_email, $subject_sales, $html_sales, $headers_sales );
 
     // ── CUSTOMER CONFIRMATION EMAIL ──
-    // Only sent if customer provided a valid email AND order is from Place Order (not WA quick-order)
     $sent_customer = false;
     if ( is_email( $email ) && $via !== 'whatsapp' ) {
         $sent_customer = carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $order_id, $order_label, $cart_lines, $total_fmt, $notes, $payment, $store_name );
@@ -673,8 +667,6 @@ function carevee_build_and_send_order( $args ) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // ─── CUSTOMER CONFIRMATION EMAIL ─────────────────────────────────────────
-// Beautiful HTML email sent to the customer after a successful Place Order.
-// No emojis — plain text icons only.
 // ════════════════════════════════════════════════════════════════════════════
 function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $order_id, $order_label, $cart_lines, $total_fmt, $notes, $payment, $store_name ) {
 
@@ -790,9 +782,6 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
 }
 
 // ─── AJAX: WHATSAPP QUICK ORDER ───────────────
-// Called from home/shop/product pages WA buttons.
-// Saves to WooCommerce orders immediately + sends sales email.
-// Customer name is always "WhatsApp Client" for easy monitoring.
 add_action( 'wp_ajax_carevee_wa_order',        'carevee_wa_order_handler' );
 add_action( 'wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler' );
 
@@ -807,7 +796,6 @@ function carevee_wa_order_handler() {
     $product_id = intval( $_POST['product_id'] ?? 0 );
     $qty        = max( 1, intval( $_POST['qty'] ?? 1 ) );
 
-    // Always use "WhatsApp Client" as the customer name for easy monitoring
     $fname = 'WhatsApp';
     $lname = 'Client';
 
@@ -825,7 +813,6 @@ function carevee_wa_order_handler() {
     $price = (float) $product->get_price();
     $sub   = $price * $qty;
 
-    // Build and send — saves WC order + emails sales team
     $result = carevee_build_and_send_order( [
         'fname'      => $fname,
         'lname'      => $lname,
@@ -869,7 +856,6 @@ function carevee_send_order_email_handler() {
     $payment  = sanitize_text_field( $_POST['payment_method']     ?? 'cod' );
     $via      = sanitize_text_field( $_POST['order_via']          ?? 'website' );
 
-    // ── Server-side validation ──
     if ( empty( $fname ) || empty( $lname ) ) {
         wp_send_json_error( [ 'msg' => 'Please enter your first and last name.', 'field' => 'name' ] );
         return;
@@ -936,7 +922,7 @@ function carevee_send_order_email_handler() {
 
     if ( $sent && $order_id ) {
         wp_send_json_success( [
-            'msg'                 => 'Order #' . $order_id . ' placed successfully. A confirmation email has been sent to ' . esc_html( $email ) . '. We will contact you shortly.',
+            'msg'                 => 'Order #' . $order_id . ' placed successfully.',
             'order_id'            => $order_id,
             'email_sent'          => true,
             'customer_email_sent' => $result['customer_email_sent'],
@@ -961,33 +947,37 @@ function carevee_send_order_email_handler() {
 
 // ════════════════════════════════════════════════════════════════════════════
 // ─── WOOCOMMERCE ADMIN ORDER BADGE ───────────────────────────────────────
-// Shows a red bubble with pending/processing order count on the WC Orders
-// menu item only (not duplicated on parent WooCommerce menu).
-// Badge disappears when the Orders page is currently open.
-// Aligned consistently with WordPress core notification bubbles.
+//
+// Shows a red bubble with pending/processing order count on the Orders
+// sub-menu item ONLY (never duplicated on the parent WooCommerce item).
+//
+// Badge is hidden automatically when:
+//   1. The Orders page is already the currently loaded admin page (PHP-side check)
+//   2. The admin clicks the Orders menu link (JS intercept before navigation)
+//
+// The JS stores a session flag in sessionStorage so the badge stays gone until
+// new orders arrive and the admin navigates away from Orders.
 // ════════════════════════════════════════════════════════════════════════════
 add_action( 'admin_menu', 'carevee_wc_order_badge', 999 );
 
 function carevee_wc_order_badge() {
     global $submenu;
 
-    // Do not show badge when Orders page is already open — user can see them
-    $current_page = $_GET['page'] ?? '';
+    // ── PHP side: suppress badge when Orders page is open ──
+    $current_page = $_GET['page']      ?? '';
     $current_post = $_GET['post_type'] ?? '';
-    if ( $current_page === 'wc-orders' || $current_post === 'shop_order' ) {
-        return;
-    }
+    $is_orders_page = ( $current_page === 'wc-orders' || $current_post === 'shop_order' );
 
-    // Count orders needing attention: pending + processing
+    if ( $is_orders_page ) return; // No badge needed — user is already viewing orders
+
+    // ── Count pending + processing orders ──
     $pending_count    = 0;
     $processing_count = 0;
 
     if ( function_exists( 'wc_orders_count' ) ) {
-        // HPOS-compatible (WC 7.1+)
         $pending_count    = (int) wc_orders_count( 'pending' );
         $processing_count = (int) wc_orders_count( 'processing' );
     } else {
-        // Fallback for non-HPOS installs
         $counts           = wp_count_posts( 'shop_order' );
         $pending_count    = (int) ( $counts->{'wc-pending'}    ?? 0 );
         $processing_count = (int) ( $counts->{'wc-processing'} ?? 0 );
@@ -996,14 +986,12 @@ function carevee_wc_order_badge() {
     $total = $pending_count + $processing_count;
     if ( $total < 1 ) return;
 
-    // Use the same HTML structure WordPress core uses for notification bubbles
-    // so sizing and alignment are identical to e.g. Comments bubble
-    $badge = ' <span class="awaiting-mod count-' . $total . '">'
+    // WordPress core bubble markup — identical to Comments counter
+    $badge = ' <span class="awaiting-mod count-' . $total . '" id="carevee-order-badge">'
            . '<span class="pending-count">' . number_format_i18n( $total ) . '</span>'
            . '</span>';
 
-    // ── Patch the Orders sub-menu item ONLY ──
-    // Try HPOS parent ('woocommerce') and legacy parent ('edit.php?post_type=shop_order')
+    // ── Patch the Orders sub-menu item ONLY (not the parent WooCommerce item) ──
     $parents = [ 'woocommerce', 'edit.php?post_type=shop_order' ];
     foreach ( $parents as $parent ) {
         if ( ! isset( $submenu[ $parent ] ) ) continue;
@@ -1013,10 +1001,55 @@ function carevee_wc_order_badge() {
                 $sub[2] === 'edit.php?post_type=shop_order'
             ) ) {
                 $submenu[ $parent ][ $k ][0] .= $badge;
-                break 2; // Only patch once — stop both loops
+                break 2; // Patch once only
             }
         }
     }
+
+    // ── Inline JS: hide badge the moment admin clicks the Orders menu link ──
+    // Also respects sessionStorage so badge stays hidden within the same session
+    // until a fresh page load brings a new count from PHP.
+    add_action( 'admin_footer', function() use ( $total ) {
+        ?>
+        <script>
+        (function(){
+            // If badge was dismissed in this session, hide it immediately on page load
+            // (covers navigating away from Orders and back to another admin page)
+            // Note: The PHP check already suppresses the badge on the Orders page itself,
+            // so this JS only runs on OTHER admin pages where the badge is rendered.
+
+            var badge = document.getElementById('carevee-order-badge');
+            if (!badge) return;
+
+            // If admin has already visited Orders in this browser session, hide badge
+            if (sessionStorage.getItem('carevee_orders_viewed') === '<?php echo esc_js( (string) $total ); ?>') {
+                badge.style.display = 'none';
+                return;
+            }
+
+            // Wire up click handler on ALL links that lead to the Orders page
+            var ordersHrefs = [
+                'admin.php?page=wc-orders',
+                'edit.php?post_type=shop_order'
+            ];
+
+            document.querySelectorAll('#adminmenu a').forEach(function(link) {
+                var href = link.getAttribute('href') || '';
+                var isOrders = ordersHrefs.some(function(o) { return href.indexOf(o) !== -1; });
+                if (!isOrders) return;
+
+                link.addEventListener('click', function() {
+                    // Store current total as "seen" — badge will stay hidden for this count
+                    sessionStorage.setItem('carevee_orders_viewed', '<?php echo esc_js( (string) $total ); ?>');
+                    // Immediately hide badge for visual feedback before navigation
+                    var b = document.getElementById('carevee-order-badge');
+                    if (b) b.style.display = 'none';
+                });
+            });
+        })();
+        </script>
+        <?php
+    } );
 }
 
 // ─── ADMIN SETTINGS PAGE ──────────────────────
