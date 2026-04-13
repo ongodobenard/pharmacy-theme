@@ -485,7 +485,7 @@ wp_enqueue_style( 'dashicons' );
             <button type="button" class="chkp-place-btn" id="chkp-place-btn-desktop">
               <span class="cv-spin"></span>
               <span class="dashicons dashicons-yes-alt" style="font-size:15px;width:15px;height:15px;"></span>
-              <span class="chkp-btn-label">Place Order &amp; Send Confirmation</span>
+              <span class="chkp-btn-label">Place Order</span>
             </button>
             <a href="<?php echo esc_url( wc_get_cart_url() ); ?>" class="chkp-back">
               <span class="dashicons dashicons-arrow-left-alt" style="font-size:13px;width:13px;height:13px;"></span>
