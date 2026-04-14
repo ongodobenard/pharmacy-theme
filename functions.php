@@ -12,6 +12,7 @@
  * - WhatsApp buttons on home/shop/product pages: after AJAX order saved, cart is
  *   cleared server-side AND client is redirected to the shop page with a clean reload.
  * - Cart + form reset silently via WC fragments after successful Place Order (server-side cart clear)
+ * - Yoast SEO focus keyphrase auto-filled from product title on save (new + existing products)
  */
 
 if ( defined('WP_DEBUG') && WP_DEBUG ) {
@@ -799,8 +800,6 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
 }
 
 // ─── AJAX: WHATSAPP QUICK ORDER ───────────────
-// After saving the order server-side, the cart is also cleared server-side.
-// The JS (in wp_footer above) then redirects the browser to the shop page.
 add_action( 'wp_ajax_carevee_wa_order',        'carevee_wa_order_handler' );
 add_action( 'wp_ajax_nopriv_carevee_wa_order', 'carevee_wa_order_handler' );
 
@@ -842,7 +841,6 @@ function carevee_wa_order_handler() {
         'wc_items'   => [ [ 'product' => $product, 'qty' => $qty ] ],
     ] );
 
-    // ── Clear WC cart server-side so the redirect to shop arrives with empty cart ──
     if ( function_exists( 'WC' ) && WC()->cart ) {
         WC()->cart->empty_cart();
         if ( WC()->session ) {
@@ -939,7 +937,6 @@ function carevee_send_order_email_handler() {
     $sent     = $result['email_sent'];
     $err      = $result['order_error'];
 
-    // ── Clear cart server-side immediately on success ──
     if ( $order_id && function_exists( 'WC' ) && WC()->cart ) {
         WC()->cart->empty_cart();
         if ( WC()->session ) {
@@ -975,18 +972,6 @@ function carevee_send_order_email_handler() {
 
 // ════════════════════════════════════════════════════════════════════════════
 // ─── WOOCOMMERCE ADMIN ORDER BADGE ───────────────────────────────────────
-//
-// LOGIC:
-//   - Each admin user has a "last viewed orders at" timestamp stored in user meta
-//     (carevee_orders_last_viewed). Default = 0 (never viewed).
-//   - The badge counts ONLY pending+processing orders whose creation date is
-//     AFTER that timestamp — i.e. genuinely new, unseen orders.
-//   - When the admin opens the Orders page:
-//       • PHP records the current time in user meta immediately (so any orders
-//         created from this moment onwards will start a fresh count from 1).
-//       • JS hides the badge on the current page load.
-//   - No sessionStorage is used — the user meta persists across browser sessions
-//     correctly, so closing and reopening the browser never re-shows old badges.
 // ════════════════════════════════════════════════════════════════════════════
 add_action( 'admin_menu', 'carevee_wc_order_badge', 999 );
 
@@ -999,30 +984,25 @@ function carevee_wc_order_badge() {
 
     $admin_user_id = get_current_user_id();
 
-    // ── If admin just opened the Orders page: stamp the time and hide badge ──
     if ( $is_orders_page ) {
         update_user_meta( $admin_user_id, 'carevee_orders_last_viewed', time() );
-        return; // No badge needed — user is viewing orders right now
+        return;
     }
 
-    // ── Retrieve the timestamp of the admin's last Orders visit ──
     $last_viewed = (int) get_user_meta( $admin_user_id, 'carevee_orders_last_viewed', true );
 
-    // ── Count pending + processing orders created AFTER last_viewed ──
     $new_count = 0;
 
     if ( function_exists( 'wc_get_orders' ) ) {
-        // HPOS-compatible query
         $args = [
             'status'       => [ 'wc-pending', 'wc-processing' ],
             'limit'        => -1,
             'return'       => 'ids',
-            'date_created' => '>' . $last_viewed, // Unix timestamp comparison
+            'date_created' => '>' . $last_viewed,
         ];
         $new_orders = wc_get_orders( $args );
         $new_count  = count( $new_orders );
     } else {
-        // Legacy post-table fallback
         global $wpdb;
         $dt = date( 'Y-m-d H:i:s', $last_viewed );
         $new_count = (int) $wpdb->get_var( $wpdb->prepare(
@@ -1034,14 +1014,12 @@ function carevee_wc_order_badge() {
         ) );
     }
 
-    if ( $new_count < 1 ) return; // Nothing new — no badge
+    if ( $new_count < 1 ) return;
 
-    // ── WordPress core bubble markup ──
     $badge = ' <span class="awaiting-mod count-' . $new_count . '" id="carevee-order-badge">'
            . '<span class="pending-count">' . number_format_i18n( $new_count ) . '</span>'
            . '</span>';
 
-    // ── Patch only the Orders sub-menu item ──
     $parents = [ 'woocommerce', 'edit.php?post_type=shop_order' ];
     foreach ( $parents as $parent ) {
         if ( ! isset( $submenu[ $parent ] ) ) continue;
@@ -1056,29 +1034,20 @@ function carevee_wc_order_badge() {
         }
     }
 
-    // ── JS: hide badge instantly when admin clicks Orders link ──
-    // (The PHP timestamp is already updated on next page load to the Orders page,
-    //  but this JS gives immediate visual feedback before the navigation completes.)
     add_action( 'admin_footer', function() {
         ?>
         <script>
         (function(){
             var badge = document.getElementById('carevee-order-badge');
             if (!badge) return;
-
             var ordersPatterns = ['page=wc-orders', 'post_type=shop_order'];
-
             document.querySelectorAll('#adminmenu a').forEach(function(link){
                 var href = link.getAttribute('href') || '';
                 var isOrders = ordersPatterns.some(function(p){ return href.indexOf(p) !== -1; });
                 if (!isOrders) return;
-
                 link.addEventListener('click', function(){
-                    // Immediately hide badge before the page navigates
                     var b = document.getElementById('carevee-order-badge');
                     if (b) b.style.display = 'none';
-                    // PHP will stamp the time when the Orders page loads,
-                    // so no sessionStorage or client-side timestamp needed.
                 });
             });
         })();
@@ -1172,3 +1141,58 @@ add_filter( 'excerpt_more',   function () { return '...'; } );
 add_action( 'init', function () {
     remove_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb', 20 );
 } );
+
+// ════════════════════════════════════════════════════════════════════════════
+// ─── YOAST SEO: AUTO-FILL FOCUS KEYPHRASE FROM PRODUCT TITLE ────────────
+//
+// - New products: keyphrase is set automatically on save (only if empty)
+// - Existing products: bulk-filled once on first load, never runs again
+// - Manual keyphrases are never overwritten
+// ════════════════════════════════════════════════════════════════════════════
+
+// Auto-fill on save for new & edited products
+add_action( 'save_post_product', 'carevee_auto_yoast_keyphrase', 10, 2 );
+function carevee_auto_yoast_keyphrase( $post_id, $post ) {
+
+    // Skip autosaves and revisions
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+    if ( wp_is_post_revision( $post_id ) ) return;
+
+    // Only run if Yoast SEO is active
+    if ( ! defined( 'WPSEO_VERSION' ) ) return;
+
+    // Only fill if keyphrase is currently empty
+    $existing = get_post_meta( $post_id, '_yoast_wpseo_focuskw', true );
+    if ( ! empty( $existing ) ) return;
+
+    update_post_meta( $post_id, '_yoast_wpseo_focuskw', $post->post_title );
+}
+
+// Bulk-fill all existing products — runs once only
+add_action( 'init', 'carevee_bulk_yoast_keyphrase_once' );
+function carevee_bulk_yoast_keyphrase_once() {
+
+    // Only run if Yoast is active
+    if ( ! defined( 'WPSEO_VERSION' ) ) return;
+
+    // Skip if already done
+    if ( get_option( 'carevee_yoast_kw_filled' ) ) return;
+
+    $products = get_posts( [
+        'post_type'      => 'product',
+        'post_status'    => 'any',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+    ] );
+
+    foreach ( $products as $id ) {
+        $existing = get_post_meta( $id, '_yoast_wpseo_focuskw', true );
+        if ( empty( $existing ) ) {
+            $title = get_the_title( $id );
+            update_post_meta( $id, '_yoast_wpseo_focuskw', $title );
+        }
+    }
+
+    // Mark as done so this never runs again
+    update_option( 'carevee_yoast_kw_filled', true );
+}
