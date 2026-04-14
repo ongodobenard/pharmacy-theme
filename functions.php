@@ -1196,3 +1196,21 @@ function carevee_bulk_yoast_keyphrase_once() {
     // Mark as done so this never runs again
     update_option( 'carevee_yoast_kw_filled', true );
 }
+// TEMPORARY - remove after running
+add_action( 'init', function() {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! isset( $_GET['carevee_resave'] ) ) return;
+
+    $ids = get_posts([
+        'post_type'      => 'product',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+    ]);
+
+    foreach ( $ids as $id ) {
+        wp_update_post( [ 'ID' => $id ] );
+    }
+
+    wp_die( 'Done! ' . count($ids) . ' products re-saved.' );
+});
