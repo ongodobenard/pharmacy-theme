@@ -741,7 +741,7 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
 
           <tr><td style="padding:16px 32px 0;">
             <div style="background:#f0faf5;border:1.5px solid #b8ecd4;border-radius:8px;padding:14px 16px;">
-              <div style="font-size:12px;font-weight:800;color:#2eaf6e;text-transform:uppercase;margin-bottom:8px;">Payment — ' . esc_html( ucwords( str_replace( [ '_', '-' ], ' ', $payment ) ) ) . '</div>
+              <div style="font-size:12px;font-weight:800;color:#2eaf6e;text-transform:uppercase;margin-bottom:8px;">Payment: ' . esc_html( ucwords( str_replace( [ '_', '-' ], ' ', $payment ) ) ) . '</div>
               <div style="font-size:12px;color:#4a6358;line-height:1.9;">
                 Nairobi: Pay Cash or M-Pesa on delivery<br>
                 Other Counties: Full payment before dispatch<br>
