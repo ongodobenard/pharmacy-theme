@@ -745,7 +745,7 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
               <div style="font-size:12px;color:#4a6358;line-height:1.9;">
                 Nairobi: Pay Cash or M-Pesa on delivery<br>
                 Other Counties: Full payment before dispatch<br>
-                M-Pesa Till: 5279237 — <strong>CAREVEE STORE</strong><br>
+                M-Pesa Till: 5279237<strong>CAREVEE STORE</strong><br>
                 Total to pay: <span style="color:#2eaf6e;font-weight:800;">' . $total_fmt . '</span>
               </div>
             </div>
@@ -781,7 +781,7 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
           </td></tr>
 
           <tr><td style="background:#f8fffe;border-top:2px solid #e8f8f0;padding:16px 32px;text-align:center;">
-            <div style="font-size:12px;color:#4a6358;font-weight:700;">' . esc_html( $store_name ) . ' — Trusted Care, Delivered Daily</div>
+            <div style="font-size:12px;color:#4a6358;font-weight:700;">' . esc_html( $store_name ) . 'Trusted Care, Delivered Daily</div>
             <div style="font-size:11px;color:#8aaa98;margin-top:4px;">+254 790 007 616 &nbsp;|&nbsp; sales@careveekenya.co.ke</div>
             <div style="font-size:11px;color:#8aaa98;margin-top:2px;">' . esc_html( home_url( '/' ) ) . '</div>
             <div style="font-size:10px;color:#b0c8bc;margin-top:8px;">This is an automated order confirmation email. Please do not reply directly.</div>
