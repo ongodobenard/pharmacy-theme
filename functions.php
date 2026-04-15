@@ -13,6 +13,7 @@
  *   cleared server-side AND client is redirected to the shop page with a clean reload.
  * - Cart + form reset silently via WC fragments after successful Place Order (server-side cart clear)
  * - Yoast SEO focus keyphrase auto-filled from product title on save (new + existing products)
+ * - FIX: Customer confirmation email WhatsApp button now links to STORE number, not customer number
  */
 
 if ( defined('WP_DEBUG') && WP_DEBUG ) {
@@ -697,7 +698,8 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
         </tr>';
     }
 
-    $wa_phone = preg_replace( '/[^0-9]/', '', $phone ?: '254790007616' );
+    // ── FIX: Use STORE WhatsApp number so customer contacts the shop, not themselves ──
+    $store_wa = preg_replace( '/[^0-9]/', '', function_exists( 'medicare_wa' ) ? medicare_wa() : '254790007616' );
 
     $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0faf5;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf5;padding:30px 0;">
@@ -774,7 +776,7 @@ function carevee_send_customer_confirmation( $email, $fname, $lname, $phone, $or
           </td></tr>
 
           <tr><td style="padding:24px 32px;text-align:center;">
-            <a href="https://wa.me/' . esc_attr( $wa_phone ) . '" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;margin:0 6px 10px;">Chat on WhatsApp</a>
+            <a href="https://wa.me/' . esc_attr( $store_wa ) . '" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;margin:0 6px 10px;">Chat on WhatsApp</a>
             <a href="tel:+254790007616" style="display:inline-block;background:#2eaf6e;color:#fff;padding:12px 24px;border-radius:50px;font-size:14px;font-weight:800;text-decoration:none;margin:0 6px 10px;">Call Us</a>
           </td></tr>
 
