@@ -589,7 +589,7 @@ function carevee_build_and_send_order( $args ) {
     }
 
     $wc_block = $order_id
-        ? '<tr><td style="padding:12px 32px 0;"><div style="background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:8px;padding:10px 16px;font-size:12px;color:#1e8a54;">Order #' . $order_id . ' saved to WooCommerce — Status: <strong>Pending Payment</strong></div></td></tr>'
+        ? '<tr><td style="padding:12px 32px 0;"><div style="background:#e8f8f0;border:1.5px solid #b8ecd4;border-radius:8px;padding:10px 16px;font-size:12px;color:#1e8a54;">Order #' . $order_id . ' saved to WooCommerce, Status: <strong>Pending Payment</strong></div></td></tr>'
         : ( $order_error ? '<tr><td style="padding:12px 32px 0;"><div style="background:#fff0f0;border:1.5px solid #f0b8b8;border-radius:8px;padding:10px 16px;font-size:12px;color:#c0392b;">WC order creation failed: ' . esc_html( $order_error ) . '</div></td></tr>' : '' );
 
     $view_btn = $order_id
